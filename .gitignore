@@ -1,0 +1,21 @@
+# ---- .NET 构建产物 ----
+bin/
+obj/
+*.user
+*.suo
+
+# ---- 运行时用户数据（相册链接 / 标签 / AI 配置，随使用环境，不应入库） ----
+data/
+**/data/
+
+# ---- WebView2 运行时缓存 ----
+.webview2/
+
+# ---- 打包产物（可重建，不入库） ----
+packaging/staging/
+packaging/ziproot/
+packaging/dist/
+packaging/test/
+
+# ---- IDE ----
+.vs/

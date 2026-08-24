@@ -77,7 +77,7 @@ dotnet run --project src/ImageViewer.App -c Release
 
 弹出独立窗口「Hoping Image Viewer」，WebView2 渲染前端，**无需打开浏览器**；关闭窗口即退出。首次打开没有相册时，点「＋ 添加文件夹」浏览并导入你的图片文件夹即可——**只记路径直接链接，文件不移动、不复制**，列表持久化到用户目录，下次启动自动加载。
 
-> 重新发布：`dotnet publish src/ImageViewer.App -c Release -r win-x64 --self-contained false -o Release`（产物含前端/依赖，**不含示例图片、不在 exe 旁放 .ico 文件**；目标机需 .NET 8 Desktop + ASP.NET Core Runtime）。
+> 重新发布：运行 `powershell -ExecutionPolicy Bypass -File packaging\build.ps1` 一键打包（详见下文「打包发布」）。手动发布：`dotnet publish src/ImageViewer.App -c Release -r win-x64 --self-contained true -o <输出目录>`（自包含，免装 .NET）。
 
 ### 🌐 浏览器版（备选）
 
@@ -89,6 +89,23 @@ dotnet run --urls http://localhost:5211
 浏览器打开 <http://localhost:5211> 即可。换端口改 `--urls` 参数即可（如 `http://localhost:5212`）。
 
 **默认图片目录**：`appsettings.json` 的 `Images:Root`；留空时开发版定位到仓库根 `pictures/`（示例数据），**发布版不再捆绑示例图**——通过「📁 添加文件夹」链接你任意位置的相册目录即可。
+
+## 打包发布
+
+一键打包（自包含，目标机免装 .NET 8）：
+
+```bash
+powershell -ExecutionPolicy Bypass -File packaging\build.ps1
+```
+
+产物在 `packaging\dist\`：
+
+| 产物 | 说明 |
+|---|---|
+| `HopingImageViewer-portable-1.0.0.zip` | **zip 便携版**：解压即用，数据保存在目录内 `data/`，可整体拷贝（绿色免安装） |
+| `HopingImageViewer-setup-1.0.0.exe` | **安装程序**：支持**选择安装路径**；勾选「**绿色安装**」= 便携模式（不创建卸载程序/注册表/快捷方式，可拷贝目录）；**不勾选** = 普通安装（创建**卸载程序**、卸载注册表项、开始菜单与可选桌面快捷方式） |
+
+打包脚本与安装脚本：`packaging\build.ps1`、`packaging\HopingImageViewer.iss`（Inno Setup）。依赖 7-Zip 与 Inno Setup 6。
 
 ## 使用说明
 
