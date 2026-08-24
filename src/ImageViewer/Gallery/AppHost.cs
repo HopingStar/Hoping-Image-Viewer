@@ -1,4 +1,5 @@
 using System.Net.Http.Headers;
+using System.Reflection;
 using System.Text.Json;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
@@ -12,11 +13,38 @@ namespace ImageViewer.Gallery;
 /// 供两种宿主共用：浏览器模式（Program.cs，--urls 固定端口）与桌面模式（ImageViewer.App，内嵌 Kestrel 随机端口）。</summary>
 public static class AppHost
 {
-    /// <summary>构建 WebApplication（未启动）。args 透传给命令行配置（如 --urls）；configureWebHost 在 Build 前调用，可注入 Kestrel 监听配置。</summary>
+    /// <summary>应用版本号（来自入口程序集 AssemblyInformationalVersion，如 1.0.1；去掉可能的 +hash 后缀）。</summary>
+    public static string AppVersion
+    {
+        get
+        {
+            var asm = Assembly.GetEntryAssembly();
+            var attr = asm?.GetCustomAttribute<AssemblyInformationalVersionAttribute>();
+            var v = attr?.InformationalVersion ?? asm?.GetName().Version?.ToString() ?? "0.0.0";
+            return v.Split('+')[0];
+        }
+    }
+
+    /// <summary>扩展名 → 友好显示名（设置页「文件关联」用）。</summary>
+    private static string FormatDisplayName(string ext) => ext.ToLowerInvariant() switch
+    {
+        ".jpg" or ".jpeg" or ".jfif" or ".jpe" => "JPEG 图片",
+        ".png" => "PNG 图片",
+        ".bmp" => "BMP 图片",
+        ".gif" => "GIF 动图",
+        ".webp" => "WebP 图片",
+        ".tif" or ".tiff" => "TIFF 图片",
+        ".ico" => "ICO 图标",
+        _ => ext,
+    };
+
+    /// <summary>构建 WebApplication（未启动）。args 透传给命令行配置（如 --urls）；configureWebHost 在 Build 前调用，可注入 Kestrel 监听配置；
+    /// appExePath = 桌面版程序 exe 完整路径（用于文件关联）；浏览器模式传 null。</summary>
     public static WebApplication Build(
         string[]? args = null,
         WebApplicationOptions? options = null,
-        Action<ConfigureWebHostBuilder>? configureWebHost = null)
+        Action<ConfigureWebHostBuilder>? configureWebHost = null,
+        string? appExePath = null)
     {
         // 优先 options（WPF 宿主：ContentRoot/WebRoot + 内嵌 Kestrel）；否则用 args（浏览器模式 --urls）
         WebApplicationBuilder builder = options is not null
@@ -39,6 +67,8 @@ public static class AppHost
         builder.Services.AddSingleton<TagStore>();
         // 角色识别 API 配置存储 + HTTP 客户端工厂（转发识别请求用）
         builder.Services.AddSingleton<AiConfigStore>();
+        // 相册排序设置存储（按相册目录单独保存排序字段/升降序）
+        builder.Services.AddSingleton<SortStore>();
         builder.Services.AddHttpClient();
 
         var app = builder.Build();
@@ -64,6 +94,9 @@ public static class AppHost
         app.UseStaticFiles();
 
         var api = app.MapGroup("/api");
+
+        // 应用版本号（标题栏显示用）
+        api.MapGet("/version", () => Results.Ok(new { version = AppVersion }));
 
         // 列目录：返回当前目录的直接图片 + 子文件夹相册。path 缺省 = 默认图片目录；root 为相册根（根处 is_root，前端不可再回退）。
         api.MapGet("/photos", (ImageService svc, [FromQuery] string? path, [FromQuery] string? root) =>
@@ -249,6 +282,58 @@ public static class AppHost
             {
                 return Results.BadRequest(new { error = "无法连接角色识别 API: " + ex.Message });
             }
+        });
+
+        // ---------- 相册排序设置（按相册目录单独保存） ----------
+
+        // 读取某个相册的排序设置（未设置返回默认：名称升序）
+        api.MapGet("/sort", (SortStore store, [FromQuery] string? path) =>
+        {
+            if (string.IsNullOrWhiteSpace(path))
+                return Results.BadRequest(new { error = "path 不能为空" });
+            var (by, order) = store.Get(path);
+            return Results.Ok(new { path, by, order });
+        });
+
+        // 保存某个相册的排序设置
+        api.MapPost("/sort", (SortStore store, [FromBody] SortRequest req) =>
+        {
+            if (string.IsNullOrWhiteSpace(req.Path))
+                return Results.BadRequest(new { error = "path 不能为空" });
+            store.Set(req.Path, req.By, req.Order);
+            var (by, order) = store.Get(req.Path);
+            return Results.Ok(new { ok = true, path = req.Path, by, order });
+        });
+
+        // ---------- 设置：应用版本 / 支持的格式 / 文件关联 ----------
+
+        // 设置总览：版本、是否桌面版、exe 路径、支持的格式及各自关联状态
+        // （appExePath 是闭包捕获的 Build 参数，不能写成 lambda 参数——会被当作请求 query 参数绑定为 null）
+        api.MapGet("/settings", () =>
+        {
+            var desktop = !string.IsNullOrWhiteSpace(appExePath);
+            var formats = ImageService.SupportedExtensions
+                .Select(ext => new
+                {
+                    ext,
+                    name = FormatDisplayName(ext),
+                    associated = desktop && FileAssociation.IsAssociated(ext),
+                })
+                .ToList();
+            return Results.Ok(new { version = AppVersion, desktop, exePath = desktop ? appExePath : null, formats });
+        });
+
+        // 应用文件关联：勾选的格式建立关联，未勾选的解除（保持与勾选状态一致）
+        api.MapPost("/settings/fileassoc", ([FromBody] FileAssocRequest req) =>
+        {
+            if (string.IsNullOrWhiteSpace(appExePath))
+                return Results.BadRequest(new { error = "文件关联仅在桌面版可用，请在桌面版中设置" });
+            var exts = req.Extensions ?? new List<string>();
+            FileAssociation.Apply(appExePath, exts);
+            var formats = ImageService.SupportedExtensions
+                .Select(ext => new { ext, associated = FileAssociation.IsAssociated(ext) })
+                .ToList();
+            return Results.Ok(new { ok = true, formats });
         });
 
         return app;

@@ -50,3 +50,17 @@ public sealed class AiConfigRequest
 {
     public string? ApiUrl { get; set; }
 }
+
+/// <summary>相册排序设置请求体（POST /api/sort）。path = 相册目录绝对路径。</summary>
+public sealed class SortRequest
+{
+    public string? Path { get; set; }
+    public string? By { get; set; }       // name | modified | created | size | type
+    public string? Order { get; set; }    // asc | desc
+}
+
+/// <summary>文件关联设置请求体（POST /api/settings/fileassoc）。extensions = 勾选的扩展名（如 [".jpg", ".png"]）。</summary>
+public sealed class FileAssocRequest
+{
+    public List<string>? Extensions { get; set; }
+}

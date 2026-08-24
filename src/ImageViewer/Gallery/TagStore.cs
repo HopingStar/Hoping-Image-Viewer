@@ -3,7 +3,7 @@ using System.Text.Json;
 namespace ImageViewer.Gallery;
 
 /// <summary>
-/// 图片标签存储：标签定义 + 图片↔标签映射，持久化到 %LOCALAPPDATA%\HopingImageViewer\tags.json。
+/// 图片标签存储：标签定义 + 图片↔标签映射，持久化到程序同目录 data/tags.json（便携式，随程序走）。
 /// 支持按多个标签取交集筛选。
 /// </summary>
 public sealed class TagStore
@@ -19,21 +19,7 @@ public sealed class TagStore
         var dir = Path.Combine(AppContext.BaseDirectory, "data");
         try { Directory.CreateDirectory(dir); } catch { }
         _file = Path.Combine(dir, "tags.json");
-        MigrateFromLocalAppData();
         Load();
-    }
-
-    /// <summary>旧版配置在 %LOCALAPPDATA%\HopingImageViewer，首次启动迁移到 data/。</summary>
-    private void MigrateFromLocalAppData()
-    {
-        try
-        {
-            var old = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "HopingImageViewer", "tags.json");
-            if (File.Exists(old) && !File.Exists(_file)) File.Copy(old, _file);
-        }
-        catch { }
     }
 
     private void Load()

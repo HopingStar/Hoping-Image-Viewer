@@ -2,7 +2,7 @@
 ; 支持选择安装路径；可选「绿色安装」；普通安装带卸载程序。
 ; 用法（在 packaging/ 目录）：
 ;   "C:\Users\<用户名>\AppData\Local\Programs\Inno Setup 6\ISCC.exe" HopingImageViewer.iss
-#define AppVer "1.0.0"
+#define AppVer "1.0.1"
 
 [Setup]
 ; 卸载注册表项的 AppId（代码里删除时也用同一值）
@@ -12,6 +12,7 @@ AppVersion={#AppVer}
 AppPublisher=HopingStar
 DefaultDirName={autopf}\Hoping Image Viewer
 DefaultGroupName=Hoping Image Viewer
+; 目录页保持 Inno 默认（auto）：若已安装过同 AppId，自动复用原安装目录覆盖安装，避免多份副本
 DisableProgramGroupPage=no
 PrivilegesRequired=admin
 ArchitecturesInstallIn64BitMode=x64
@@ -26,7 +27,7 @@ OutputDir=dist
 OutputBaseFilename=HopingImageViewer-setup-{#AppVer}-win-x64
 
 [Tasks]
-Name: "green"; Description: "绿色安装（便携模式）：不创建开始菜单/卸载程序、不写入注册表，整个文件夹可拷贝到任意位置直接使用"; GroupDescription: "安装模式:"; Flags: unchecked
+Name: "green"; Description: "绿色安装（便携模式）：不建卸载程序/注册表，文件夹可整体拷贝带走"; GroupDescription: "安装模式:"; Flags: unchecked
 Name: "desktopicon"; Description: "创建桌面快捷方式"; GroupDescription: "附加图标:"; Flags: unchecked
 
 [Files]
@@ -52,14 +53,76 @@ begin
   Result := WizardIsTaskSelected('green');
 end;
 
-{ 卸载时询问是否删除程序数据（相册链接/标签/AI 配置）；默认「否」保留数据 }
+{ 卸载确认：勾选方式决定是否删除数据；点「取消」中止卸载。
+  勾选 = 删除 data；不勾选 = 保留数据到安装目录上级的 HopingImageViewer-data 文件夹。 }
 function InitializeUninstall: Boolean;
+var
+  Form: TForm;
+  LblText: TNewStaticText;
+  HintText: TNewStaticText;
+  Check: TNewCheckBox;
+  CancelBtn, OkBtn: TNewButton;
 begin
-  DeleteData := MsgBox('是否同时删除程序数据？' + #13#10 + #13#10 +
-    '程序数据包括：相册链接、图片标签、AI 识别配置（data 文件夹）。' + #13#10 +
-    '选择「否」将保留数据，数据会保留在安装目录上级的 HopingImageViewer-data 文件夹。',
-    mbConfirmation, MB_YESNO or MB_DEFBUTTON2) = mrYes;
-  Result := True;
+  DeleteData := False;
+  Form := TForm.Create(nil);
+  try
+    Form.Caption := '卸载 Hoping Image Viewer';
+    Form.ClientWidth := ScaleX(450);
+    Form.ClientHeight := ScaleY(190);
+    Form.Position := poScreenCenter;
+    Form.BorderStyle := bsDialog;
+
+    LblText := TNewStaticText.Create(Form);
+    LblText.Parent := Form;
+    LblText.Left := ScaleX(20);
+    LblText.Top := ScaleY(16);
+    LblText.Width := Form.ClientWidth - ScaleX(40);
+    LblText.WordWrap := True;
+    LblText.Caption := '确定要卸载 Hoping Image Viewer 吗？';
+
+    HintText := TNewStaticText.Create(Form);
+    HintText.Parent := Form;
+    HintText.Left := ScaleX(20);
+    HintText.Top := ScaleY(42);
+    HintText.Width := Form.ClientWidth - ScaleX(40);
+    HintText.WordWrap := True;
+    HintText.Caption := '程序数据（相册链接 / 图片标签 / 排序设置 / AI 配置）保存在程序目录 data 文件夹，' + #13#10 +
+      '不勾选将保留到安装目录上级的 HopingImageViewer-data 文件夹。';
+
+    Check := TNewCheckBox.Create(Form);
+    Check.Parent := Form;
+    Check.Left := ScaleX(20);
+    Check.Top := ScaleY(96);
+    Check.Checked := False;
+    Check.Caption := '同时删除程序数据';
+
+    CancelBtn := TNewButton.Create(Form);
+    CancelBtn.Parent := Form;
+    CancelBtn.Caption := '取消';
+    CancelBtn.ModalResult := mrCancel;
+    CancelBtn.Top := Form.ClientHeight - ScaleY(58);
+    CancelBtn.Left := Form.ClientWidth - ScaleX(118);
+    CancelBtn.Width := ScaleX(90);
+
+    OkBtn := TNewButton.Create(Form);
+    OkBtn.Parent := Form;
+    OkBtn.Caption := '卸载';
+    OkBtn.ModalResult := mrOk;
+    OkBtn.Default := True;
+    OkBtn.Top := CancelBtn.Top;
+    OkBtn.Left := CancelBtn.Left - ScaleX(98);
+    OkBtn.Width := ScaleX(90);
+
+    if Form.ShowModal = mrOk then
+    begin
+      DeleteData := Check.Checked;
+      Result := True;    // 继续卸载
+    end
+    else
+      Result := False;   // 取消卸载
+  finally
+    Form.Free;
+  end;
 end;
 
 { 卸载删除文件前，先结束正在运行的程序（含 WebView2 子进程树）。

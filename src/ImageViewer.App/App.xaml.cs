@@ -28,7 +28,8 @@ public partial class App : Application
                     ContentRootPath = AppContext.BaseDirectory,
                     WebRootPath = webRoot,
                 },
-                configureWebHost: webHost => webHost.ConfigureKestrel(k => k.Listen(IPAddress.Loopback, 0)));
+                configureWebHost: webHost => webHost.ConfigureKestrel(k => k.Listen(IPAddress.Loopback, 0)),
+                appExePath: Environment.ProcessPath);
 
             await webApp.StartAsync();
             _host = new WebHostHandle(webApp);

@@ -72,6 +72,7 @@
     state.photos = data.photos;
     state.albums = data.albums;
     state.displayName = data.display_name || state.path;
+    if (state.inAlbum) await loadSort(state.path);   // 进入相册：恢复该相册记忆的排序方式
     render();
   }
 
@@ -190,6 +191,11 @@
       let r = 0;
       if (by === 'name') {
         r = String(a.name).localeCompare(String(b.name), 'zh', { numeric: true, sensitivity: 'base' });
+      } else if (by === 'type') {
+        // 按文件后缀排序（同类型再按名称）
+        const ea = extOf(a.name), eb = extOf(b.name);
+        r = ea.localeCompare(eb, 'zh', { sensitivity: 'base' })
+          || String(a.name).localeCompare(String(b.name), 'zh', { numeric: true, sensitivity: 'base' });
       } else if (by === 'modified') {
         r = (new Date(a.modified)).getTime() - (new Date(b.modified)).getTime();
       } else if (by === 'created') {
@@ -199,6 +205,26 @@
       }
       return r * dir;
     });
+  }
+
+  /** 拉取当前相册的排序设置（每个相册单独保存；未设置用默认名称升序）。 */
+  async function loadSort(path) {
+    try {
+      const resp = await fetch('/api/sort?path=' + encodeURIComponent(path));
+      const d = await resp.json();
+      if (d.by) { state.sortBy = d.by; state.sortOrder = d.order || 'asc'; }
+    } catch { }
+    syncViewToggle();
+  }
+
+  /** 保存当前相册的排序设置（仅图片页）。 */
+  function saveSort() {
+    if (!state.inAlbum || !state.path) return;
+    fetch('/api/sort', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path: state.path, by: state.sortBy, order: state.sortOrder }),
+    }).catch(() => {});
   }
 
   // ==================== 标签管理页 ====================
@@ -1435,13 +1461,20 @@
     $('viewAlbum').addEventListener('click', () => { state.view = 'album'; syncViewToggle(); render(); });
     $('viewList').addEventListener('click', () => { state.view = 'list'; syncViewToggle(); render(); });
 
-    // 排序（仅图片页显示；随 viewToggle 显隐）
-    $('sortSelect').addEventListener('change', () => { state.sortBy = $('sortSelect').value; render(); });
+    // 排序（仅图片页显示；随 viewToggle 显隐；每个相册单独保存）
+    $('sortSelect').addEventListener('change', () => { state.sortBy = $('sortSelect').value; syncViewToggle(); saveSort(); render(); });
     $('sortOrderBtn').addEventListener('click', () => {
       state.sortOrder = state.sortOrder === 'asc' ? 'desc' : 'asc';
       syncViewToggle();
+      saveSort();
       render();
     });
+
+    // 设置：文件关联
+    $('btnSettings').addEventListener('click', openSettings);
+    $('settingsCloseBtn').addEventListener('click', closeSettings);
+    $('assocApplyBtn').addEventListener('click', applyAssoc);
+    $('settingsModal').addEventListener('mousedown', (e) => { if (e.target === $('settingsModal')) closeSettings(); });
 
     // 查看器按钮
     $('viewerClose').addEventListener('click', closeViewer);
@@ -1604,11 +1637,85 @@
     });
   }
 
+  // ==================== 设置：文件关联 ====================
+
+  /** 打开设置弹窗并拉取当前支持的格式与关联状态。 */
+  async function openSettings() {
+    $('settingsModal').classList.remove('hidden');
+    await renderAssocList();
+  }
+
+  function closeSettings() {
+    $('settingsModal').classList.add('hidden');
+  }
+
+  /** 渲染文件关联勾选列表（勾选状态 = 当前注册表中的关联状态）。 */
+  async function renderAssocList() {
+    const list = $('assocList');
+    list.innerHTML = '';
+    let data = null;
+    try {
+      const resp = await fetch('/api/settings');
+      data = await resp.json();
+    } catch { }
+    if (!data || !data.desktop) {
+      const hint = document.createElement('div');
+      hint.className = 'settings-hint';
+      hint.textContent = '文件关联仅在桌面版可用（浏览器版无法关联）。';
+      list.appendChild(hint);
+      $('assocApplyBtn').style.display = 'none';
+      return;
+    }
+    $('assocApplyBtn').style.display = '';
+    for (const f of data.formats || []) {
+      const row = document.createElement('label');
+      row.className = 'assoc-row';
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.value = f.ext;
+      cb.checked = !!f.associated;
+      const label = document.createElement('span');
+      label.textContent = f.ext.toUpperCase() + ' · ' + f.name;
+      row.appendChild(cb);
+      row.appendChild(label);
+      list.appendChild(row);
+    }
+  }
+
+  /** 应用文件关联：勾选的格式建立关联，未勾选的解除。 */
+  async function applyAssoc() {
+    const checked = Array.from(document.querySelectorAll('#assocList input[type="checkbox"]:checked'))
+      .map((c) => c.value);
+    try {
+      const resp = await fetch('/api/settings/fileassoc', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ extensions: checked }),
+      });
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({ error: '应用失败' }));
+        showModal({ title: '提示', message: esc(err.error || '应用失败'), type: 'alert' });
+        return;
+      }
+      await renderAssocList();
+      showModal({ title: '提示', message: '文件关联已更新。双击已勾选格式的图片文件即可用本软件打开。', type: 'alert' });
+    } catch {
+      showModal({ title: '提示', message: '应用失败：无法连接服务', type: 'alert' });
+    }
+  }
+
   // ==================== 工具函数 ====================
 
   function esc(s) {
     return String(s).replace(/[&<>"']/g, (c) =>
       ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  }
+
+  /** 文件后缀（小写，无点；无后缀返回 ''）。用于「按类型」排序。 */
+  function extOf(name) {
+    const s = String(name);
+    const i = s.lastIndexOf('.');
+    return i > 0 ? s.slice(i + 1).toLowerCase() : '';
   }
 
   function formatSize(bytes) {
@@ -1629,9 +1736,20 @@
 
   function clamp(v, min, max) { return Math.min(max, Math.max(min, v)); }
 
+  /** 拉取版本号并显示在标题栏（如 v1.0.1）。 */
+  async function loadVersion() {
+    try {
+      const resp = await fetch('/api/version');
+      const d = await resp.json();
+      const el = $('winVersion');
+      if (el && d.version) el.textContent = ' v' + d.version;
+    } catch { }
+  }
+
   // ==================== 启动 ====================
   async function init() {
     bindEvents();
+    loadVersion();
     await loadAlbums();
     if (state.linkedAlbums.length > 0) {
       state.root = state.linkedAlbums[0].path;   // 已有链接：从第一个相册的相册页开始

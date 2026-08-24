@@ -217,14 +217,27 @@ public sealed class ImageService
     public static string? ContentTypeFor(string path) =>
         Path.GetExtension(path).ToLowerInvariant() switch
         {
-            ".jpg" or ".jpeg" => "image/jpeg",
+            ".jpg" or ".jpeg" or ".jfif" or ".jpe" => "image/jpeg",
             ".png" => "image/png",
             ".bmp" => "image/bmp",
             ".gif" => "image/gif",
             ".webp" => "image/webp",
             ".tif" or ".tiff" => "image/tiff",
+            ".ico" => "image/x-icon",
             _ => null
         };
+
+    /// <summary>全部支持的图片扩展名（带点小写），供设置页「文件关联」勾选使用。</summary>
+    public static readonly string[] SupportedExtensions =
+    {
+        ".jpg", ".jpeg", ".jfif", ".jpe",
+        ".png",
+        ".bmp",
+        ".gif",
+        ".webp",
+        ".tif", ".tiff",
+        ".ico",
+    };
 }
 
 /// <summary>自然排序（数字感知）：img2 排在 img10 之前，文件名大小写不敏感。</summary>

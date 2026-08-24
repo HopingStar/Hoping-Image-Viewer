@@ -71,6 +71,16 @@ html, body {
   animation: titleFlow 5s linear infinite;
 }
 
+/* 标题栏版本号：独立于流光标题，普通小号半透明白字 */
+.win-version {
+  margin-left: 6px;
+  font-weight: 400;
+  font-size: 10.5px;
+  letter-spacing: 0;
+  color: rgba(255, 255, 255, 0.72);
+  vertical-align: 1px;
+}
+
 @keyframes titleFlow {
   from { background-position: 0% 50%; }
   to { background-position: 200% 50%; }
@@ -576,6 +586,31 @@ html, body {
   color: #fff;
 }
 .modal-ok:hover { background: #3d8bf0; border-color: #3d8bf0; color: #fff; }
+
+/* ============ 设置（文件关联） ============ */
+.settings-box { width: 380px; max-width: 90vw; }
+.settings-section-title { font-size: 13px; font-weight: 700; color: var(--text); margin: 2px 0 6px; }
+.settings-hint { font-size: 12px; color: var(--text-dim); line-height: 1.6; margin-bottom: 10px; }
+.assoc-list {
+  max-height: 280px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 12px;
+  margin-bottom: 14px;
+  background: var(--bg);
+}
+.assoc-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 2px;
+  font-size: 13px;
+  color: var(--text);
+  cursor: pointer;
+}
+.assoc-row:hover { color: var(--accent); }
+.assoc-row input[type="checkbox"] { accent-color: var(--accent); width: 15px; height: 15px; cursor: pointer; }
 
 /* ============ 角色识别面板（AI） ============ */
 .ai-box { width: 420px; max-width: 90vw; }
