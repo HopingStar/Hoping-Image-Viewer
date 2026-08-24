@@ -4,7 +4,7 @@ namespace ImageViewer.Gallery;
 
 /// <summary>
 /// 已链接相册文件夹的持久化存储（只记路径，不复制文件——用户相册可能在任意位置）。
-/// 配置存到用户 LocalAppData\HopingImageViewer\albums.json，不放在程序目录/相册目录内。
+/// 配置存到程序同目录 data/albums.json（便携式，随程序走）。
 /// </summary>
 public sealed class AlbumStore
 {
@@ -18,21 +18,7 @@ public sealed class AlbumStore
         var dir = Path.Combine(AppContext.BaseDirectory, "data");
         try { Directory.CreateDirectory(dir); } catch { }
         _file = Path.Combine(dir, "albums.json");
-        MigrateFromLocalAppData();
         Load();
-    }
-
-    /// <summary>旧版配置在 %LOCALAPPDATA%\HopingImageViewer，首次启动迁移到 data/。</summary>
-    private void MigrateFromLocalAppData()
-    {
-        try
-        {
-            var old = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "HopingImageViewer", "albums.json");
-            if (File.Exists(old) && !File.Exists(_file)) File.Copy(old, _file);
-        }
-        catch { }
     }
 
     private void Load()

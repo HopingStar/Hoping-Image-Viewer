@@ -28,7 +28,12 @@ Hoping Image Viewer 便携版（绿色免安装）
 New-Item -ItemType Directory -Path $ReleaseDir -Force | Out-Null
 $sevenZip = 'C:\Program Files\7-Zip\7z.exe'
 if (-not (Test-Path $sevenZip)) { throw "未找到 7-Zip: $sevenZip" }
-& $sevenZip a -tzip -mx=9 -bso0 -bsp0 "$ReleaseDir\HopingImageViewer-portable-$Version-win-x64.zip" packaging\ziproot\HopingImageViewer
+# 7z 的 a 命令是追加模式，打包前先删旧 zip，避免条目累积翻倍
+Remove-Item "$ReleaseDir\HopingImageViewer-portable-$Version-win-x64.zip" -Force -ErrorAction SilentlyContinue
+# 进入 ziproot 再打包，zip 内根目录就是 HopingImageViewer（不带 packaging\ziproot 前缀）
+Push-Location packaging\ziproot
+& $sevenZip a -tzip -mx=9 -bso0 -bsp0 "$ReleaseDir\HopingImageViewer-portable-$Version-win-x64.zip" HopingImageViewer
+Pop-Location
 Remove-Item packaging\ziproot -Recurse -Force -ErrorAction SilentlyContinue
 
 Write-Host "[3/3] 编译 Inno Setup 安装程序..." -ForegroundColor Cyan
