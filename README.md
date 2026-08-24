@@ -98,12 +98,12 @@ dotnet run --urls http://localhost:5211
 powershell -ExecutionPolicy Bypass -File packaging\build.ps1
 ```
 
-产物在 `packaging\dist\`：
+产物输出目录在 `packaging\build.ps1` 顶部的 `$ReleaseDir`（默认输出到**原工作区 Release 目录**，不进入代码仓库，可自行修改）：
 
 | 产物 | 说明 |
 |---|---|
 | `HopingImageViewer-portable-1.0.0.zip` | **zip 便携版**：解压即用，数据保存在目录内 `data/`，可整体拷贝（绿色免安装） |
-| `HopingImageViewer-setup-1.0.0.exe` | **安装程序**：支持**选择安装路径**；勾选「**绿色安装**」= 便携模式（不创建卸载程序/注册表/快捷方式，可拷贝目录）；**不勾选** = 普通安装（创建**卸载程序**、卸载注册表项、开始菜单与可选桌面快捷方式） |
+| `HopingImageViewer-setup-1.0.0.exe` | **安装程序**：支持**选择安装路径**；勾选「**绿色安装**」= 便携模式（不创建卸载程序/注册表/快捷方式，可拷贝目录）；**不勾选** = 普通安装（创建**卸载程序**、卸载注册表项、开始菜单与可选桌面快捷方式），**卸载时询问是否删除程序数据（默认保留）** |
 
 打包脚本与安装脚本：`packaging\build.ps1`、`packaging\HopingImageViewer.iss`（Inno Setup）。依赖 7-Zip 与 Inno Setup 6。
 
