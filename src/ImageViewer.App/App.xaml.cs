@@ -19,6 +19,16 @@ public partial class App : Application
 
         try
         {
+            // 0) 双击图片文件用本程序打开：命令行参数里是图片路径 → 记为待打开图片（前端启动后打开查看器）
+            foreach (var arg in e.Args)
+            {
+                if (!string.IsNullOrWhiteSpace(arg) && ImageService.ContentTypeFor(arg) is not null)
+                {
+                    AppHost.PendingOpenPath = Path.GetFullPath(arg);
+                    break;
+                }
+            }
+
             // 1) 组装内嵌 Kestrel：127.0.0.1 随机空闲端口（ListenLocalhost(0) 不支持动态端口，改用显式 Loopback）
             var webRoot = ResolveWebRoot();
             var webApp = AppHost.Build(

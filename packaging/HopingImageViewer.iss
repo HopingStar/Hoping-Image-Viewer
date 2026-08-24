@@ -67,10 +67,12 @@ begin
   Form := TForm.Create(nil);
   try
     Form.Caption := '卸载 Hoping Image Viewer';
-    Form.ClientWidth := ScaleX(450);
-    Form.ClientHeight := ScaleY(190);
+    Form.ClientWidth := ScaleX(440);
+    Form.ClientHeight := ScaleY(170);
     Form.Position := poScreenCenter;
     Form.BorderStyle := bsDialog;
+    Form.Font.Name := 'Segoe UI';
+    Form.Font.Size := 9;
 
     LblText := TNewStaticText.Create(Form);
     LblText.Parent := Form;
@@ -80,29 +82,30 @@ begin
     LblText.WordWrap := True;
     LblText.Caption := '确定要卸载 Hoping Image Viewer 吗？';
 
-    HintText := TNewStaticText.Create(Form);
-    HintText.Parent := Form;
-    HintText.Left := ScaleX(20);
-    HintText.Top := ScaleY(42);
-    HintText.Width := Form.ClientWidth - ScaleX(40);
-    HintText.WordWrap := True;
-    HintText.Caption := '程序数据（相册链接 / 图片标签 / 排序设置 / AI 配置）保存在程序目录 data 文件夹，' + #13#10 +
-      '不勾选将保留到安装目录上级的 HopingImageViewer-data 文件夹。';
-
     Check := TNewCheckBox.Create(Form);
     Check.Parent := Form;
     Check.Left := ScaleX(20);
-    Check.Top := ScaleY(96);
+    Check.Top := ScaleY(48);
+    Check.Width := Form.ClientWidth - ScaleX(40);
     Check.Checked := False;
     Check.Caption := '同时删除程序数据';
+
+    HintText := TNewStaticText.Create(Form);
+    HintText.Parent := Form;
+    HintText.Left := ScaleX(20);
+    HintText.Top := ScaleY(74);
+    HintText.Width := Form.ClientWidth - ScaleX(40);
+    HintText.WordWrap := True;
+    HintText.Caption := '不勾选将保留数据到安装目录上级的 HopingImageViewer-data 文件夹。';
 
     CancelBtn := TNewButton.Create(Form);
     CancelBtn.Parent := Form;
     CancelBtn.Caption := '取消';
     CancelBtn.ModalResult := mrCancel;
-    CancelBtn.Top := Form.ClientHeight - ScaleY(58);
-    CancelBtn.Left := Form.ClientWidth - ScaleX(118);
-    CancelBtn.Width := ScaleX(90);
+    CancelBtn.Top := Form.ClientHeight - ScaleY(48);
+    CancelBtn.Left := Form.ClientWidth - ScaleX(126);
+    CancelBtn.Width := ScaleX(96);
+    CancelBtn.Height := ScaleY(30);
 
     OkBtn := TNewButton.Create(Form);
     OkBtn.Parent := Form;
@@ -110,8 +113,9 @@ begin
     OkBtn.ModalResult := mrOk;
     OkBtn.Default := True;
     OkBtn.Top := CancelBtn.Top;
-    OkBtn.Left := CancelBtn.Left - ScaleX(98);
-    OkBtn.Width := ScaleX(90);
+    OkBtn.Left := CancelBtn.Left - ScaleX(104);
+    OkBtn.Width := ScaleX(96);
+    OkBtn.Height := ScaleY(30);
 
     if Form.ShowModal = mrOk then
     begin

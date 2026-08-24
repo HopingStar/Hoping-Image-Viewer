@@ -1694,12 +1694,14 @@
       });
       if (!resp.ok) {
         const err = await resp.json().catch(() => ({ error: '应用失败' }));
+        closeSettings();
         showModal({ title: '提示', message: esc(err.error || '应用失败'), type: 'alert' });
         return;
       }
-      await renderAssocList();
+      closeSettings();
       showModal({ title: '提示', message: '文件关联已更新。双击已勾选格式的图片文件即可用本软件打开。', type: 'alert' });
     } catch {
+      closeSettings();
       showModal({ title: '提示', message: '应用失败：无法连接服务', type: 'alert' });
     }
   }
@@ -1747,10 +1749,34 @@
   }
 
   // ==================== 启动 ====================
+
+  /** 读取「待打开图片」（双击图片文件用本程序打开时由启动参数传入），一次性。 */
+  async function fetchPendingOpen() {
+    try {
+      const resp = await fetch('/api/pending-open');
+      const d = await resp.json();
+      return d && d.path ? d.path : null;
+    } catch { return null; }
+  }
+
+  /** 打开指定图片：加载其所在目录并定位到该图片显示查看器。 */
+  async function openPendingPhoto(path) {
+    const i = Math.max(path.lastIndexOf('\\'), path.lastIndexOf('/'));
+    const dir = i > 0 ? path.slice(0, i) : '';
+    state.root = dir;
+    await load(dir, true);
+    const norm = (s) => String(s).replace(/\\/g, '/').toLowerCase();
+    const idx = state.photos.findIndex((p) => norm(p.path) === norm(path));
+    if (idx >= 0) openViewer(idx);
+  }
+
   async function init() {
     bindEvents();
     loadVersion();
     await loadAlbums();
+    // 双击图片用本程序打开：启动后直接打开该图片
+    const pending = await fetchPendingOpen();
+    if (pending) { await openPendingPhoto(pending); return; }
     if (state.linkedAlbums.length > 0) {
       state.root = state.linkedAlbums[0].path;   // 已有链接：从第一个相册的相册页开始
       load(state.root, false);

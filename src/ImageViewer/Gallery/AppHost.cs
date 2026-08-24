@@ -38,6 +38,9 @@ public static class AppHost
         _ => ext,
     };
 
+    /// <summary>待打开图片路径（双击图片文件用本程序打开时，由 App 启动参数写入；前端启动时一次性读取后清除）。</summary>
+    public static string? PendingOpenPath { get; set; }
+
     /// <summary>构建 WebApplication（未启动）。args 透传给命令行配置（如 --urls）；configureWebHost 在 Build 前调用，可注入 Kestrel 监听配置；
     /// appExePath = 桌面版程序 exe 完整路径（用于文件关联）；浏览器模式传 null。</summary>
     public static WebApplication Build(
@@ -97,6 +100,14 @@ public static class AppHost
 
         // 应用版本号（标题栏显示用）
         api.MapGet("/version", () => Results.Ok(new { version = AppVersion }));
+
+        // 双击图片用本程序打开：返回待打开图片路径（一次性，前端启动时获取并打开查看器）
+        api.MapGet("/pending-open", () =>
+        {
+            var p = AppHost.PendingOpenPath;
+            AppHost.PendingOpenPath = null;
+            return Results.Ok(new { path = p });
+        });
 
         // 列目录：返回当前目录的直接图片 + 子文件夹相册。path 缺省 = 默认图片目录；root 为相册根（根处 is_root，前端不可再回退）。
         api.MapGet("/photos", (ImageService svc, [FromQuery] string? path, [FromQuery] string? root) =>
