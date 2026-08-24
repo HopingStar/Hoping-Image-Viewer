@@ -1,4 +1,4 @@
-# 🖼️ Hoping Image Viewer（希望的图片查看器）
+# 🖼️ Hoping Image Viewer
 
 一款 **Windows 本地图片查看器**：桌面窗口应用，支持浏览本地相册、图片标签管理、GIF 动图、平滑缩放 / 旋转 / 导出，以及**角色识别**（AI 自动识别图中角色）。
 
