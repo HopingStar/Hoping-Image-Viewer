@@ -23,7 +23,7 @@ SetupIconFile=..\src\ImageViewer.App\HopingImageViewer.ico
 UninstallDisplayIcon={app}\HopingImageViewer.exe
 UninstallDisplayName=Hoping Image Viewer
 OutputDir=dist
-OutputBaseFilename=HopingImageViewer-setup-{#AppVer}
+OutputBaseFilename=HopingImageViewer-setup-{#AppVer}-win-x64
 
 [Tasks]
 Name: "green"; Description: "绿色安装（便携模式）：不创建开始菜单/卸载程序、不写入注册表，整个文件夹可拷贝到任意位置直接使用"; GroupDescription: "安装模式:"; Flags: unchecked
