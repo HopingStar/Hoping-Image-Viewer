@@ -2,7 +2,7 @@
 ; 支持选择安装路径；可选「绿色安装」；普通安装带卸载程序。
 ; 用法（在 packaging/ 目录）：
 ;   "C:\Users\<用户名>\AppData\Local\Programs\Inno Setup 6\ISCC.exe" HopingImageViewer.iss
-#define AppVer "1.0.1"
+#define AppVer "1.0.2"
 
 [Setup]
 ; 卸载注册表项的 AppId（代码里删除时也用同一值）

@@ -1,93 +1,98 @@
 using System.IO;
-using System.Net;
+using System.IO.Pipes;
+using System.Threading;
 using System.Windows;
-using ImageViewer.App.Hosting;
 using ImageViewer.App.Wpf;
 using ImageViewer.Gallery;
-using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Hosting;
 
 namespace ImageViewer.App;
 
-public partial class App : Application
+public partial class App : System.Windows.Application
 {
-    private WebHostHandle? _host;
+    private const string SingleInstanceMutexName = @"Local\HopingImageViewer_SingleInstance";
+    private const string PipeName = @"HopingImageViewer_Pipe";
+    private static Mutex? _singleMutex;
 
-    protected override async void OnStartup(StartupEventArgs e)
+    protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
 
-        try
+        // 单实例复用：已有实例在运行 → 把命令行里的图片路径转发给它，本实例直接退出
+        _singleMutex = new Mutex(true, SingleInstanceMutexName, out bool createdNew);
+        if (!createdNew)
         {
-            // 0) 双击图片文件用本程序打开：命令行参数里是图片路径 → 记为待打开图片（前端启动后打开查看器）
-            foreach (var arg in e.Args)
-            {
-                if (!string.IsNullOrWhiteSpace(arg) && ImageService.ContentTypeFor(arg) is not null)
-                {
-                    AppHost.PendingOpenPath = Path.GetFullPath(arg);
-                    break;
-                }
-            }
+            ForwardToRunningInstance(e.Args);
+            Shutdown();
+            return;
+        }
+        StartPipeServer();   // 接收后续实例转发的图片路径，交给前端打开
 
-            // 1) 组装内嵌 Kestrel：127.0.0.1 随机空闲端口（ListenLocalhost(0) 不支持动态端口，改用显式 Loopback）
-            var webRoot = ResolveWebRoot();
-            var webApp = AppHost.Build(
-                options: new WebApplicationOptions
-                {
-                    ApplicationName = "HopingImageViewer",
-                    ContentRootPath = AppContext.BaseDirectory,
-                    WebRootPath = webRoot,
-                },
-                configureWebHost: webHost => webHost.ConfigureKestrel(k => k.Listen(IPAddress.Loopback, 0)),
-                appExePath: Environment.ProcessPath);
+        // 立即弹出窗口（秒开）：Kestrel 与 WebView2 在 MainWindow 内后台并行初始化，不阻塞窗口显示
+        var window = new MainWindow(e.Args);
+        window.Show();
+        window.Activate();
+    }
 
-            await webApp.StartAsync();
-            _host = new WebHostHandle(webApp);
-
-            // 2) 端口写日志，便于排查
+    /// <summary>把命令行里的图片路径通过命名管道转发给正在运行的主实例（单实例复用）。</summary>
+    private static void ForwardToRunningInstance(string[] args)
+    {
+        foreach (var arg in args)
+        {
+            if (string.IsNullOrWhiteSpace(arg) || ImageService.ContentTypeFor(arg) is null) continue;
             try
             {
-                File.WriteAllText(Path.Combine(AppContext.BaseDirectory, "startup.log"),
-                    $"port={_host.Port}\nwebroot={webRoot}\n");
+                using var client = new NamedPipeClientStream(".", PipeName, PipeDirection.Out);
+                client.Connect(3000);
+                using var writer = new StreamWriter(client);
+                writer.WriteLine(Path.GetFullPath(arg));
+                writer.Flush();
             }
             catch { }
+            return;
+        }
+    }
 
-            // 3) 主窗口（WebView2 渲染前端）—— Show 即自动弹出，Activate 置前抢焦点
-            var window = new MainWindow(_host.Port);
-            window.Show();
-            window.Activate();
-        }
-        catch (Exception ex)
+    /// <summary>后台线程监听命名管道：收到图片路径 → 记为待打开图片，前端轮询到后打开查看器。</summary>
+    private static void StartPipeServer()
+    {
+        var thread = new Thread(() =>
         {
-            MessageBox.Show("启动失败: " + ex.Message, "图片查看器",
-                MessageBoxButton.OK, MessageBoxImage.Error);
-            Shutdown();
-        }
+            while (true)
+            {
+                try
+                {
+                    using var server = new NamedPipeServerStream(PipeName, PipeDirection.In, 1);
+                    server.WaitForConnection();
+                    using var reader = new StreamReader(server);
+                    var line = reader.ReadLine();
+                    if (!string.IsNullOrWhiteSpace(line) && ImageService.ContentTypeFor(line) is not null)
+                    {
+                        var path = Path.GetFullPath(line);
+                        AppHost.PendingOpenPath = path;
+                        // 主动推送主窗口弹窗并打开图片（不依赖前端轮询——窗口隐藏时 Chromium 会节流 JS 定时器）
+                        try
+                        {
+                            System.Windows.Application.Current?.Dispatcher.BeginInvoke(() =>
+                            {
+                                foreach (Window w in System.Windows.Application.Current.Windows)
+                                {
+                                    if (w is MainWindow mw) { mw.OpenImage(path); break; }
+                                }
+                            });
+                        }
+                        catch { }
+                    }
+                }
+                catch { /* 单次监听失败不影响后续 */ }
+            }
+        })
+        { IsBackground = true };
+        thread.Start();
     }
 
     protected override void OnExit(ExitEventArgs e)
     {
-        try { _host?.Stop(); } catch { }
+        try { _singleMutex?.ReleaseMutex(); } catch { }
         base.OnExit(e);
-    }
-
-    /// <summary>定位前端 wwwroot：优先 exe 目录下 wwwroot（发布版自包含）；否则向上找仓库根 src/ImageViewer/wwwroot（开发期）。</summary>
-    private static string ResolveWebRoot()
-    {
-        var publishWwwRoot = Path.Combine(AppContext.BaseDirectory, "wwwroot");
-        if (Directory.Exists(publishWwwRoot)) return publishWwwRoot;
-
-        var dir = new DirectoryInfo(AppContext.BaseDirectory);
-        while (dir is not null)
-        {
-            if (dir.GetFiles("*.sln").Length > 0)
-            {
-                var dev = Path.Combine(dir.FullName, "src", "ImageViewer", "wwwroot");
-                if (Directory.Exists(dev)) return dev;
-                break;
-            }
-            dir = dir.Parent;
-        }
-        return publishWwwRoot;
     }
 }

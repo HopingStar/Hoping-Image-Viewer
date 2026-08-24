@@ -10,5 +10,10 @@
     <WindowChrome.WindowChrome>
         <WindowChrome CaptionHeight="0" ResizeBorderThickness="6" GlassFrameThickness="0" CornerRadius="0" UseAeroCaptionButtons="False" />
     </WindowChrome.WindowChrome>
-    <wv2:WebView2 x:Name="webView" DefaultBackgroundColor="#0d0f13" />
+    <Grid Background="#0d0f13">
+        <!-- 启动占位：WebView2 初始化前先显示，随后被页面覆盖 -->
+        <TextBlock x:Name="bootHint" Text="🖼️ 正在启动…" HorizontalAlignment="Center"
+                   VerticalAlignment="Center" Foreground="#77808a" FontSize="14" />
+        <wv2:WebView2 x:Name="webView" DefaultBackgroundColor="#0d0f13" />
+    </Grid>
 </Window>

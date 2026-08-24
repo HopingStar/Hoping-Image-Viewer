@@ -48,4 +48,22 @@ internal static class WindowChromeService
         _ = NativeMethods.SystemParametersInfo(NativeMethods.SPI_GETWORKAREA, 0, ref rect, 0);
         return rect;
     }
+
+    /// <summary>闪烁窗口标题栏 + 任务栏图标，提示用户图片已打开。</summary>
+    public static void Flash(Window window)
+    {
+        try
+        {
+            var info = new NativeMethods.FLASHWINFO
+            {
+                cbSize = (uint)System.Runtime.InteropServices.Marshal.SizeOf<NativeMethods.FLASHWINFO>(),
+                hwnd = new WindowInteropHelper(window).Handle,
+                dwFlags = NativeMethods.FLASHW_ALL | NativeMethods.FLASHW_TIMERNOFG,
+                uCount = 0,
+                dwTimeout = 0,
+            };
+            _ = NativeMethods.FlashWindowEx(ref info);
+        }
+        catch { }
+    }
 }

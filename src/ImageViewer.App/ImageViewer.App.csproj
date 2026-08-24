@@ -5,10 +5,11 @@
     <TargetFramework>net8.0-windows</TargetFramework>
     <RootNamespace>ImageViewer.App</RootNamespace>
     <AssemblyName>HopingImageViewer</AssemblyName>
-    <Version>1.0.1</Version>
+    <Version>1.0.2</Version>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
     <!-- ApplicationIcon：把图标内嵌进 exe（exe 文件图标），不留 .ico 在 exe 旁 -->
     <ApplicationIcon>HopingImageViewer.ico</ApplicationIcon>
   </PropertyGroup>

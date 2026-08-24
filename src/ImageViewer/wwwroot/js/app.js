@@ -20,6 +20,7 @@
     filterTags: [],           // 标签页中选中的筛选标签（多选取交集）
     droppedUrl: null,         // 拖入图片的 blob URL
     droppedName: '',          // 拖入图片的文件名
+    pendingName: '',          // 双击打开图片的文件名（相册加载完成前临时显示）
     // ---- 查看器 ----
     index: -1,
     scale: 1,
@@ -679,7 +680,9 @@
 
   function updateTitle() {
     if (state.index < 0) {
-      viewerTitle.textContent = (state.droppedName || '图片') + '（拖入）';
+      if (state.droppedName) viewerTitle.textContent = state.droppedName + '（拖入）';
+      else if (state.pendingName) viewerTitle.textContent = state.pendingName;
+      else viewerTitle.textContent = '图片';
       return;
     }
     const p = state.photos[state.index];
@@ -1699,7 +1702,9 @@
         return;
       }
       closeSettings();
-      showModal({ title: '提示', message: '文件关联已更新。双击已勾选格式的图片文件即可用本软件打开。', type: 'alert' });
+      showModal({ title: '提示',
+        message: '文件关联已更新，已加入打开方式。<br>要设为双击默认打开：右键任意图片 → 打开方式 → Hoping Image Viewer → 勾选「始终使用此应用」。',
+        type: 'alert' });
     } catch {
       closeSettings();
       showModal({ title: '提示', message: '应用失败：无法连接服务', type: 'alert' });
@@ -1759,20 +1764,50 @@
     } catch { return null; }
   }
 
-  /** 打开指定图片：加载其所在目录并定位到该图片显示查看器。 */
+  /** 打开指定图片：先在查看器立即显示该图片（秒开，不等相册加载），同时后台加载所在相册，加载完进入列表上下文（可 ←→ 切换）。 */
   async function openPendingPhoto(path) {
+    // 打开图片时把窗口带到最前并闪烁提示用户（桌面版）
+    const ch = getChrome();
+    if (ch && ch.bring_to_front) { try { ch.bring_to_front(); } catch { } }
     const i = Math.max(path.lastIndexOf('\\'), path.lastIndexOf('/'));
     const dir = i > 0 ? path.slice(0, i) : '';
     state.root = dir;
-    await load(dir, true);
-    const norm = (s) => String(s).replace(/\\/g, '/').toLowerCase();
-    const idx = state.photos.findIndex((p) => norm(p.path) === norm(path));
-    if (idx >= 0) openViewer(idx);
+    // 1) 秒开：不等相册加载，立即显示图片
+    state.index = -1;
+    state.pendingName = (i > 0 ? path.slice(i + 1) : path) || '图片';
+    cancelZoomAnim();
+    state.scale = 1;
+    state.translateX = 0;
+    state.translateY = 0;
+    state.rotate = 0;
+    state.isFitMode = true;
+    viewer.classList.remove('hidden');
+    viewerImg.onload = () => { fitToWindow(); updateTitle(); };
+    viewerImg.src = '/api/photo?path=' + encodeURIComponent(path);
+    updateTitle();
+    // 2) 后台加载相册，完成后定位到该图片（支持前后切换）
+    try {
+      await load(dir, true);
+      state.pendingName = '';
+      const norm = (s) => String(s).replace(/\\/g, '/').toLowerCase();
+      const idx = state.photos.findIndex((p) => norm(p.path) === norm(path));
+      if (idx >= 0) {
+        state.index = idx;   // 仅设置索引，不重载图片（当前图已显示，避免闪烁）
+        updateTitle();
+      }
+    } catch { state.pendingName = ''; }
   }
 
   async function init() {
     bindEvents();
     loadVersion();
+    // 主进程主动推送（单实例/窗口隐藏时，轮询会被 Chromium 节流，用此直达打开图片）
+    window.hivOpenPendingPhoto = (path) => { if (path) openPendingPhoto(path); };
+    // 兜底轮询（窗口可见时补充；隐藏时 Chromium 会节流定时器，主要走主进程主动推送）
+    setInterval(async () => {
+      const p = await fetchPendingOpen();
+      if (p) await openPendingPhoto(p);
+    }, 1500);
     await loadAlbums();
     // 双击图片用本程序打开：启动后直接打开该图片
     const pending = await fetchPendingOpen();

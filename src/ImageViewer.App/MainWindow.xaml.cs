@@ -1,23 +1,68 @@
 using System.IO;
+using System.Net;
 using System.Windows;
+using System.Windows.Interop;
 using System.Windows.Media.Imaging;
+using ImageViewer.App;
 using ImageViewer.App.Bridge;
+using ImageViewer.App.Hosting;
+using ImageViewer.App.Native;
+using ImageViewer.Gallery;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.Web.WebView2.Core;
 
 namespace ImageViewer.App.Wpf;
 
+/// <summary>
+/// 主窗口：Show 后立即显示（秒开体验），Kestrel 与 WebView2 在后台并行初始化，
+/// 完成后加载前端页面；启动参数里的图片路径会交给前端打开查看器。
+/// </summary>
 public partial class MainWindow : Window
 {
-    private readonly int _port;
+    private WebHostHandle? _host;
+    private readonly string[] _startArgs;
     private readonly WindowControlBridge _bridge;
+    private TrayIcon? _tray;
 
-    public MainWindow(int port)
+    public MainWindow(string[] startArgs)
     {
         InitializeComponent();
-        _port = port;
+        _startArgs = startArgs;
         _bridge = new WindowControlBridge(this);
         SetWindowIcon();
-        Loaded += async (_, _) => await InitWebViewAsync();
+        // 常驻系统托盘：关闭窗口只隐藏（不退出进程），托盘右键「退出」才真正结束
+        _tray = new TrayIcon(this);
+        Closed += (_, _) =>
+        {
+            _tray?.Dispose();
+            _tray = null;
+            try { _host?.Stop(); } catch { }
+        };
+        Loaded += async (_, _) => await StartAsync();
+    }
+
+    /// <summary>外部（单实例转发）请求打开图片：恢复窗口（托盘隐藏/最小化）置前并闪烁，主动通知前端显示图片。
+    /// 不依赖前端轮询——窗口隐藏时 Chromium 会节流 JS 定时器，须由主进程主动推送。</summary>
+    public void OpenImage(string path)
+    {
+        // 恢复窗口显示并置前闪烁
+        if (WindowState == WindowState.Minimized) WindowState = WindowState.Normal;
+        if (!IsVisible) Show();
+        var hwnd = new WindowInteropHelper(this).Handle;
+        NativeMethods.ShowWindow(hwnd, NativeMethods.SW_RESTORE);
+        NativeMethods.ShowWindow(hwnd, NativeMethods.SW_SHOW);
+        NativeMethods.SetForegroundWindow(hwnd);
+        Activate();
+        WindowChromeService.Flash(this);
+        // 主动通知前端打开图片（WebView2 就绪时）
+        try
+        {
+            if (webView.CoreWebView2 is not null)
+                _ = webView.CoreWebView2.ExecuteScriptAsync(
+                    "window.hivOpenPendingPhoto(" + System.Text.Json.JsonSerializer.Serialize(path) + ");");
+        }
+        catch { }
     }
 
     /// <summary>从程序集内嵌 Resource 加载窗口/任务栏图标（exe 旁不留 .ico 文件）。
@@ -26,7 +71,7 @@ public partial class MainWindow : Window
     {
         try
         {
-            var stream = Application.GetResourceStream(
+            var stream = System.Windows.Application.GetResourceStream(
                 new Uri("pack://application:,,,/HopingImageViewer.ico"))?.Stream;
             if (stream is null) return;
             using (stream)
@@ -42,7 +87,53 @@ public partial class MainWindow : Window
         catch { /* 图标加载失败不影响主界面 */ }
     }
 
-    private async Task InitWebViewAsync()
+    /// <summary>窗口已显示后异步初始化：内嵌 Kestrel → WebView2 → 页面（互不阻塞窗口显示）。</summary>
+    private async Task StartAsync()
+    {
+        try
+        {
+            // 双击图片用本程序打开：启动参数里是图片路径 → 记为待打开图片（前端启动后打开查看器）
+            foreach (var arg in _startArgs)
+            {
+                if (!string.IsNullOrWhiteSpace(arg) && ImageService.ContentTypeFor(arg) is not null)
+                {
+                    AppHost.PendingOpenPath = Path.GetFullPath(arg);
+                    break;
+                }
+            }
+
+            var webRoot = ResolveWebRoot();
+            var webApp = AppHost.Build(
+                options: new WebApplicationOptions
+                {
+                    ApplicationName = "HopingImageViewer",
+                    ContentRootPath = AppContext.BaseDirectory,
+                    WebRootPath = webRoot,
+                },
+                configureWebHost: webHost => webHost.ConfigureKestrel(k => k.Listen(IPAddress.Loopback, 0)),
+                appExePath: Environment.ProcessPath);
+            await webApp.StartAsync();
+            _host = new WebHostHandle(webApp);
+
+            // 端口写日志，便于排查
+            try
+            {
+                File.WriteAllText(Path.Combine(AppContext.BaseDirectory, "startup.log"),
+                    $"port={_host.Port}\nwebroot={webRoot}\n");
+            }
+            catch { }
+
+            await InitWebViewAsync(_host.Port);
+        }
+        catch (Exception ex)
+        {
+            System.Windows.MessageBox.Show("启动失败: " + ex.Message, "图片查看器",
+                MessageBoxButton.OK, MessageBoxImage.Error);
+            Close();
+        }
+    }
+
+    private async Task InitWebViewAsync(int port)
     {
         try
         {
@@ -59,12 +150,32 @@ public partial class MainWindow : Window
             // 自绘标题栏的窗口控制桥（前端 window.chromeHost 调用：拖动/最小化/最大化/关闭）
             webView.CoreWebView2.AddHostObjectToScript("chromeHost", _bridge);
             await webView.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(WindowGlue.Script);
-            webView.CoreWebView2.Navigate($"http://127.0.0.1:{_port}/");
+            webView.CoreWebView2.Navigate($"http://127.0.0.1:{port}/");
         }
         catch (Exception ex)
         {
-            MessageBox.Show("WebView2 初始化失败（需要 WebView2 运行时，Windows 10/11 一般已内置）:\n" + ex.Message,
+            System.Windows.MessageBox.Show("WebView2 初始化失败（需要 WebView2 运行时，Windows 10/11 一般已内置）:\n" + ex.Message,
                 "图片查看器", MessageBoxButton.OK, MessageBoxImage.Error);
         }
+    }
+
+    /// <summary>定位前端 wwwroot：优先 exe 目录下 wwwroot（发布版自包含）；否则向上找仓库根 src/ImageViewer/wwwroot（开发期）。</summary>
+    private static string ResolveWebRoot()
+    {
+        var publishWwwRoot = Path.Combine(AppContext.BaseDirectory, "wwwroot");
+        if (Directory.Exists(publishWwwRoot)) return publishWwwRoot;
+
+        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+        while (dir is not null)
+        {
+            if (dir.GetFiles("*.sln").Length > 0)
+            {
+                var dev = Path.Combine(dir.FullName, "src", "ImageViewer", "wwwroot");
+                if (Directory.Exists(dev)) return dev;
+                break;
+            }
+            dir = dir.Parent;
+        }
+        return publishWwwRoot;
     }
 }
