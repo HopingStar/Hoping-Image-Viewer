@@ -32,6 +32,12 @@ Name: "desktopicon"; Description: "创建桌面快捷方式"; GroupDescription: 
 [Files]
 Source: "staging\app\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs ignoreversion; Excludes: "*.pdb"
 
+[UninstallDelete]
+; WebView2 运行时缓存（程序运行产生，不在安装清单里），卸载时进程已退出可安全删除
+Type: filesandordirs; Name: "{app}\.webview2"
+; 启动调试日志（程序运行产生）
+Type: files; Name: "{app}\startup.log"
+
 [Icons]
 Name: "{group}\Hoping Image Viewer"; Filename: "{app}\HopingImageViewer.exe"; Tasks: not green
 Name: "{group}\卸载 Hoping Image Viewer"; Filename: "{uninstallexe}"; Tasks: not green
@@ -56,18 +62,37 @@ begin
   Result := True;
 end;
 
-{ 保留数据时：卸载删除 app 目录前先把 data 移出到安装目录上级；卸载后提示位置 }
+{ 卸载删除文件前，先结束正在运行的程序（含 WebView2 子进程树）。
+  否则 exe / dll 全被进程锁定，Inno 删不掉，卸载后残留大量文件。 }
+procedure KillAppProcess;
+var
+  ResultCode: Integer;
+begin
+  Exec(ExpandConstant('{sys}\taskkill.exe'),
+    '/F /IM HopingImageViewer.exe /T',
+    '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+end;
+
+{ 处理程序数据：删 data 或移到上级；再让 Inno 删除其余文件 }
 procedure CurUninstallStepChanged(CurStep: TUninstallStep);
 var
   DataPath: string;
   BackupPath: string;
   i: Integer;
 begin
-  if (CurStep = usUninstall) and (not DeleteData) then
+  if CurStep = usUninstall then
   begin
+    KillAppProcess;  { 先杀进程，避免后续删除被锁定 }
     DataPath := ExpandConstant('{app}\data');
-    if DirExists(DataPath) then
+    if DeleteData then
     begin
+      { 选了「删除数据」：data 不在安装清单里，需手动删 }
+      if DirExists(DataPath) then
+        DelTree(DataPath, True, True, True);
+    end
+    else if DirExists(DataPath) then
+    begin
+      { 选了「保留数据」：把 data 移出到安装目录上级 }
       BackupPath := ExpandConstant('{app}\..\HopingImageViewer-data');
       i := 1;
       while DirExists(BackupPath) do
