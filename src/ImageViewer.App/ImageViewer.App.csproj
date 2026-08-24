@@ -1,0 +1,44 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <RootNamespace>ImageViewer.App</RootNamespace>
+    <AssemblyName>HopingImageViewer</AssemblyName>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+    <!-- ApplicationIcon：把图标内嵌进 exe（exe 文件图标），不留 .ico 在 exe 旁 -->
+    <ApplicationIcon>HopingImageViewer.ico</ApplicationIcon>
+  </PropertyGroup>
+
+  <!-- 同一 ico 以 Resource 内嵌进程序集，供代码在 MainWindow 构造时加载窗口/任务栏图标。
+       注意：窗口图标必须用代码加载（pack URI），不能在 XAML 写 Icon 属性
+       （会触发 Baml2006.TypeConverterMarkupExtension 启动异常，勿再改回）。 -->
+  <ItemGroup>
+    <Resource Include="HopingImageViewer.ico" />
+  </ItemGroup>
+
+  <!-- 复用图片查看器 Web 后端（AppHost 构建逻辑 + 图片服务） -->
+  <ItemGroup>
+    <ProjectReference Include="..\ImageViewer\ImageViewer.csproj" />
+  </ItemGroup>
+
+  <!-- WebView2：Windows 自带的共享运行时，不依赖用户安装浏览器 -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4129.50" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <!-- 发布时把前端 wwwroot 一并带出（内嵌 Kestrel 的静态文件源） -->
+  <ItemGroup>
+    <Content Include="..\ImageViewer\wwwroot\**\*" Link="wwwroot\%(RecursiveDir)%(Filename)%(Extension)" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <!-- 不再捆绑 pictures/（相册文件夹由用户「添加文件夹」直接链接外部目录，不放进程序目录）。
+       仓库根 pictures/ 仅作开发期示例数据。 -->
+
+</Project>

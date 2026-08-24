@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Hoping Image Viewer</title>
+  <link rel="icon" href="favicon.ico" type="image/x-icon">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+  <!-- 自绘窗口标题栏（桌面版显示；浏览器版隐藏） -->
+  <div id="winTitlebar">
+    <span class="win-logo">🖼️</span>
+    <span class="win-title">Hoping Image Viewer</span>
+    <span class="win-subtitle" id="winSubtitle">本地图片浏览</span>
+    <div class="spacer"></div>
+    <div class="win-controls">
+      <button class="win-btn" id="winMinBtn" title="最小化">─</button>
+      <button class="win-btn" id="winMaxBtn" title="最大化">□</button>
+      <button class="win-btn win-btn-close" id="winCloseBtn" title="关闭">✕</button>
+    </div>
+  </div>
+
+  <!-- 顶部工具栏 -->
+  <header class="toolbar">
+    <button id="btnHome" class="tool-btn" title="回到首页（我的相册）">🏠 首页</button>
+    <button id="btnBack" class="tool-btn" title="上一级目录">⬆ 上级</button>
+    <button id="btnTags" class="tool-btn" title="标签管理（新建/筛选）">🏷 标签</button>
+    <button id="btnAddFolder" class="tool-btn" title="浏览并添加相册文件夹（直接链接，不复制文件）">📁 添加文件夹</button>
+    <span id="currentDir" class="current-dir"></span>
+    <div class="spacer"></div>
+    <div class="view-toggle" id="viewToggle">
+      <button id="btnBatch" class="tool-btn" title="一键识别相册全部图片（识别后先核对，可修改，确定才写入标签）">⚡ 一键识别</button>
+      <select id="sortSelect" class="sort-select" title="图片排序方式">
+        <option value="name">按名称</option>
+        <option value="modified">按修改时间</option>
+        <option value="created">按创建时间</option>
+        <option value="size">按大小</option>
+      </select>
+      <button id="sortOrderBtn" class="tool-btn" title="切换升序/降序">↑</button>
+      <button id="viewAlbum" class="active" title="平铺视图">🗂 平铺</button>
+      <button id="viewList" title="列表视图">☰ 列表</button>
+    </div>
+  </header>
+
+  <!-- 主内容：相册 / 列表 -->
+  <main id="content" class="content"></main>
+
+  <!-- 拖入图片提示遮罩 -->
+  <div id="dropOverlay" class="drop-overlay hidden">
+    <div class="drop-box">🖼️ 松开以查看图片</div>
+  </div>
+
+  <!-- 右键菜单（图片上右键：打开 / 识别角色 / 添加标签 ▸ / 复制路径） -->
+  <div id="ctxMenu" class="ctx-menu hidden">
+    <div class="ctx-item" data-act="open">🖼️ 打开图片</div>
+    <div class="ctx-item" data-act="recognize">🔍 识别角色</div>
+    <div class="ctx-item ctx-has-sub" data-act="tag">🏷 添加标签 <span class="ctx-arrow">▸</span></div>
+    <div class="ctx-item" data-act="copy">📋 复制路径</div>
+  </div>
+  <div id="ctxSubmenu" class="ctx-submenu hidden"></div>
+
+  <!-- 模态弹窗（替代 alert/confirm/prompt，隐藏网页特征） -->
+  <div id="modalOverlay" class="modal-overlay hidden">
+    <div class="modal-box">
+      <div class="modal-title" id="modalTitle"></div>
+      <div class="modal-message" id="modalMessage"></div>
+      <input id="modalInput" class="modal-input" type="text" spellcheck="false" autocomplete="off" style="display:none">
+      <div class="modal-buttons">
+        <button id="modalCancelBtn" class="tool-btn" style="display:none">取消</button>
+        <button id="modalOkBtn" class="tool-btn modal-ok">确定</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 图片查看器（全屏遮罩） -->
+  <div id="viewer" class="viewer hidden">
+    <div class="viewer-topbar">
+      <span id="viewerTitle" class="viewer-title"></span>
+      <button id="viewerClose" class="viewer-close" title="关闭 (Esc)">✕</button>
+    </div>
+
+    <div id="viewerStage" class="viewer-stage">
+      <img id="viewerImg" alt="" draggable="false">
+    </div>
+
+    <button id="prevBtn" class="nav-btn prev" title="上一张 (←)">◀</button>
+    <button id="nextBtn" class="nav-btn next" title="下一张 (→)">▶</button>
+
+    <div class="viewer-controls">
+      <button id="btnZoomOut" title="缩小">−</button>
+      <span id="zoomLabel" class="zoom-label">100%</span>
+      <button id="btnZoomIn" title="放大">＋</button>
+      <button id="btnFit" title="适应窗口">⤢</button>
+      <button id="btnActual" title="实际大小 (1:1)">1:1</button>
+      <span class="sep"></span>
+      <button id="btnRotateL" title="左旋 90°">↺</button>
+      <button id="btnRotateR" title="右旋 90°">↻</button>
+      <button id="btnReset" title="旋转复位 (0°)">⟲</button>
+      <span class="sep"></span>
+      <button id="btnRecognize" title="识别图中角色">🔍 识别</button>
+      <button id="btnExport" title="保存旋转后的图片">💾 保存</button>
+    </div>
+  </div>
+
+  <!-- 角色识别面板（对接用户配置的模型 API 识别图中角色，可一键把角色加为标签） -->
+  <div id="aiModal" class="modal-overlay hidden">
+    <div class="modal-box ai-box">
+      <div class="modal-title">🔍 识别角色</div>
+      <div class="ai-api-row">
+        <input id="aiUrlInput" class="ai-url-input" type="text" spellcheck="false" autocomplete="off" placeholder="角色识别 API 地址，如 http://localhost:5210">
+        <button id="aiSaveUrlBtn" class="tool-btn" title="保存 API 地址">保存</button>
+      </div>
+      <div class="ai-file" id="aiFile"></div>
+      <div id="aiResults" class="ai-results"></div>
+      <div class="modal-buttons">
+        <button id="aiReRunBtn" class="tool-btn" title="用当前图片重新识别">重新识别</button>
+        <button id="aiCloseBtn" class="tool-btn modal-ok">关闭</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 一键识别相册进度 -->
+  <div id="batchProgress" class="modal-overlay hidden">
+    <div class="modal-box bp-box">
+      <div class="modal-title">⚡ 一键识别</div>
+      <div class="bp-progress"><div id="bpBar" class="bp-bar"></div></div>
+      <div class="bp-count" id="bpCount">0 / 0</div>
+      <div class="bp-file" id="bpFile">正在识别…</div>
+      <div class="bp-path" id="bpPath"></div>
+      <div class="modal-buttons">
+        <button id="bpCancelBtn" class="tool-btn">取消</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 一键识别结果预览（核对、修改标签；点「确定写入」才保存） -->
+  <div id="batchReview" class="modal-overlay hidden">
+    <div class="modal-box review-box">
+      <div class="modal-title">⚡ 识别结果预览</div>
+      <div class="review-hint" id="brHint"></div>
+      <div class="br-tags" id="brTags"></div>
+      <div class="br-grid" id="brGrid"></div>
+      <div class="modal-buttons">
+        <button id="brCancelBtn" class="tool-btn">取消</button>
+        <button id="brOkBtn" class="tool-btn modal-ok">确定写入</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 预览中修改单张图片标签 -->
+  <div id="brEdit" class="modal-overlay hidden">
+    <div class="modal-box br-edit-box">
+      <div class="modal-title">修改标签</div>
+      <div class="br-edit-name" id="brEditName"></div>
+      <div class="br-edit-path" id="brEditPath"></div>
+      <div class="br-edit-row">
+        <select id="brEditSelect" class="br-edit-select"></select>
+        <input id="brEditInput" class="br-edit-input" type="text" spellcheck="false" autocomplete="off" placeholder="或输入新标签名">
+      </div>
+      <div class="modal-buttons">
+        <button id="brEditCancelBtn" class="tool-btn">取消</button>
+        <button id="brEditOkBtn" class="tool-btn modal-ok">确定</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/app.js"></script>
+</body>
+</html>

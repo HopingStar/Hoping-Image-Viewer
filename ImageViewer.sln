@@ -1,0 +1,34 @@
+
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{7F6F8FAC-53B7-4FBD-A7EF-978D4ADAFFDF}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ImageViewer", "src\ImageViewer\ImageViewer.csproj", "{FAA8DBBD-CF87-4DF3-A6F9-255C6ABB2CA0}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ImageViewer.App", "src\ImageViewer.App\ImageViewer.App.csproj", "{418D6AE1-D94C-4F85-9217-4FBCE429EA56}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{FAA8DBBD-CF87-4DF3-A6F9-255C6ABB2CA0}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{FAA8DBBD-CF87-4DF3-A6F9-255C6ABB2CA0}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{FAA8DBBD-CF87-4DF3-A6F9-255C6ABB2CA0}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{FAA8DBBD-CF87-4DF3-A6F9-255C6ABB2CA0}.Release|Any CPU.Build.0 = Release|Any CPU
+		{418D6AE1-D94C-4F85-9217-4FBCE429EA56}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{418D6AE1-D94C-4F85-9217-4FBCE429EA56}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{418D6AE1-D94C-4F85-9217-4FBCE429EA56}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{418D6AE1-D94C-4F85-9217-4FBCE429EA56}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{FAA8DBBD-CF87-4DF3-A6F9-255C6ABB2CA0} = {7F6F8FAC-53B7-4FBD-A7EF-978D4ADAFFDF}
+		{418D6AE1-D94C-4F85-9217-4FBCE429EA56} = {7F6F8FAC-53B7-4FBD-A7EF-978D4ADAFFDF}
+	EndGlobalSection
+EndGlobal
