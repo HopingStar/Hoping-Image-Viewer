@@ -4,7 +4,7 @@
 # 用法（项目根目录）：
 #   powershell -ExecutionPolicy Bypass -File packaging\build.ps1
 $ErrorActionPreference = 'Stop'
-$Version = '1.0.2'
+$Version = '1.1.0'
 # 发布产物按版本归类到子目录（Release\<版本>\）
 $ReleaseDir = "H:\WorkSpace\CherryStudio\DeepSeek\ImageViewer_c\Release\$Version"
 $Root = Split-Path -Parent $PSScriptRoot

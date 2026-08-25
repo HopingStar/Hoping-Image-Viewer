@@ -16,7 +16,6 @@
     sortBy: 'name',           // 图片排序字段：name | modified | created | size
     sortOrder: 'asc',         // asc | desc
     inAlbum: false,           // true=正在看某个相册的图片页；false=相册页（只显示相册）
-    prevWasImage: false,      // 进入当前相册前，上一页是否为图片页（「上级」回到根的图片页还是相册页）
     tagPage: false,           // true=标签管理页
     filterTags: [],           // 标签页中选中的筛选标签（多选取交集）
     droppedUrl: null,         // 拖入图片的 blob URL
@@ -32,6 +31,7 @@
     dragging: false,
     dragLastX: 0,
     dragLastY: 0,
+    bg: 0,                    // 查看器背景：0=默认灰 1=白 2=黑
   };
 
   // ==================== DOM 引用 ====================
@@ -47,6 +47,17 @@
   const MAX_SCALE = 20;
   const ZOOM_STEP = 1.25;
 
+  // 国际化：简体中文（zh-CN）直接透传原文，其他语言查 I18N 字典
+  const t = (key) => (window.I18N ? I18N.t(key) : key);
+
+  /** 组合后端错误显示：error 为固定短语（t() 翻译）+ message 为动态详情（原文）。 */
+  const apiErr = (d, fallback) => {
+    if (!d) return fallback;
+    const base = d.error ? t(d.error) : (fallback || '');
+    if (!d.message) return base;
+    return base ? base + '：' + d.message : d.message;
+  };
+
   // ==================== 目录加载与渲染 ====================
 
   /** 加载并渲染指定目录。path 为空 = 当前相册根；请求携带 root 参数供后端判定「根处不可回退」。
@@ -54,14 +65,16 @@
   async function load(path, inAlbum) {
     if (typeof inAlbum !== 'undefined') state.inAlbum = !!inAlbum;
     state.tagPage = false;   // 导航离开标签页
+    showLoading();
     const params = new URLSearchParams();
     if (path) params.set('path', path);
     if (state.root) params.set('root', state.root);
     const qs = params.toString();
     const resp = await fetch('/api/photos' + (qs ? '?' + qs : ''));
     if (!resp.ok) {
+      hideLoading();
       const err = await resp.json().catch(() => ({ error: 'HTTP ' + resp.status }));
-      showModal({ title: '提示', message: esc(err.error || '加载失败'), type: 'alert' });
+      showModal({ title: t('提示'), message: esc(t(err.error || '加载失败')), type: 'error' });
       return;
     }
     const data = await resp.json();
@@ -75,7 +88,12 @@
     state.displayName = data.display_name || state.path;
     if (state.inAlbum) await loadSort(state.path);   // 进入相册：恢复该相册记忆的排序方式
     render();
+    hideLoading();
   }
+
+  /** 显示/隐藏加载动画（目录/相册加载时）。 */
+  function showLoading() { $('loading').classList.remove('hidden'); }
+  function hideLoading() { $('loading').classList.add('hidden'); }
 
   /** 拉取已链接相册列表（GET /api/albums）。 */
   async function loadAlbums() {
@@ -92,12 +110,12 @@
     const ch = getChrome();
     let picked = null;
     if (ch && ch.pick_folder) {
-      try { picked = await ch.pick_folder(); } catch { }
+      try { picked = await ch.pick_folder(t('选择相册文件夹（直接链接，不复制文件）')); } catch { }
     }
     if (!picked) {
       picked = await showModal({
-        title: '添加相册文件夹',
-        message: '输入相册文件夹路径（将直接链接，不复制文件）：',
+        title: t('添加相册文件夹'),
+        message: t('输入相册文件夹路径（将直接链接，不复制文件）：'),
         type: 'prompt',
       });
     }
@@ -111,13 +129,13 @@
         body: JSON.stringify({ path: picked }),
       });
       if (!resp.ok) {
-        const err = await resp.json().catch(() => ({ error: '添加失败' }));
-        showModal({ title: '提示', message: esc(err.error || '添加失败'), type: 'alert' });
+        const err = await resp.json().catch(() => ({ error: t('添加失败') }));
+        showModal({ title: t('提示'), message: esc(t(err.error || '添加失败')), type: 'error' });
         return;
       }
       ok = true;
     } catch {
-      showModal({ title: '提示', message: '添加失败：无法连接服务', type: 'alert' });
+      showModal({ title: t('提示'), message: t('添加失败：无法连接服务'), type: 'error' });
       return;
     }
     if (ok) await loadAlbums();
@@ -151,9 +169,13 @@
 
   function render() {
     const st = $('winSubtitle');
-    if (st) st.textContent = state.displayName || state.path;
-    // 相册页（inAlbum=false）在根处禁用「上级」；图片页/标签页始终可「上级」
-    $('btnBack').disabled = state.tagPage ? false : (state.isRoot && !state.inAlbum);
+    if (st) {
+      // 标题栏文件夹名：相册页显示「相册」，标签页显示「标签管理」，图片页显示当前文件夹名
+      if (state.tagPage) st.textContent = t('标签管理');
+      else st.textContent = state.inAlbum ? (state.displayName || state.path) : t('相册');
+    }
+    // 上级按钮只在相册（图片页）内显示；标签页需要返回也显示；相册页（根）隐藏
+    $('btnBack').style.display = (state.inAlbum || state.tagPage) ? '' : 'none';
     content.innerHTML = '';
     disposeVg();
     cancelListChunk();
@@ -182,11 +204,11 @@
       const subAlbums = rootIsLinked ? [] : state.albums.filter((a) =>
         !state.linkedAlbums.some((l) => l.path.toLowerCase() === a.path.toLowerCase()));
       if (subAlbums.length > 0) {
-        renderAlbumGrid(subAlbums, '相册');
+        renderAlbumGrid(subAlbums, t('相册'));
       } else if (state.linkedAlbums.length === 0) {
         const empty = document.createElement('div');
         empty.className = 'empty-hint';
-        empty.textContent = '还没有相册，点击「＋ 添加文件夹」导入你的图片文件夹';
+        empty.textContent = t('还没有相册，点击「＋ 添加文件夹」导入你的图片文件夹');
         content.appendChild(empty);
       }
     }
@@ -258,10 +280,10 @@
     head.className = 'tag-page-head';
     const title = document.createElement('span');
     title.className = 'section-title';
-    title.textContent = '标签管理';
+    title.textContent = t('标签管理');
     const addBtn = document.createElement('button');
     addBtn.className = 'tool-btn';
-    addBtn.textContent = '＋ 新建标签';
+    addBtn.textContent = '＋ ' + t('新建标签');
     addBtn.addEventListener('click', createTag);
     head.appendChild(title);
     head.appendChild(addBtn);
@@ -270,7 +292,7 @@
     if (tags.length === 0) {
       const hint = document.createElement('div');
       hint.className = 'tag-filter-hint';
-      hint.textContent = '还没有标签。右键任意图片 → 添加标签，或点「＋ 新建标签」。';
+      hint.textContent = t('还没有标签。右键任意图片 → 添加标签，或点「＋ 新建标签」。');
       content.appendChild(hint);
     } else {
       const chips = document.createElement('div');
@@ -279,12 +301,12 @@
         const active = state.filterTags.includes(t);
         const chip = document.createElement('span');
         chip.className = 'tag-chip' + (active ? ' active' : '');
-        chip.title = active ? '点击取消筛选' : '点击加入筛选';
+        chip.title = active ? t('点击取消筛选') : t('点击加入筛选');
         chip.textContent = t;
         const del = document.createElement('span');
         del.className = 'tag-chip-del';
         del.textContent = '✕';
-        del.title = '删除标签';
+        del.title = t('删除标签');
         del.addEventListener('click', (e) => { e.stopPropagation(); deleteTag(t); });
         chip.appendChild(del);
         chip.addEventListener('click', () => toggleFilterTag(t));
@@ -296,8 +318,8 @@
     const resultTitle = document.createElement('div');
     resultTitle.className = 'section-title';
     resultTitle.textContent = state.filterTags.length
-      ? '筛选：' + state.filterTags.map(esc).join(' ∩ ')
-      : '筛选匹配的图片';
+      ? t('筛选：') + state.filterTags.map(esc).join(' ∩ ')
+      : t('筛选匹配的图片');
     content.appendChild(resultTitle);
 
     if (state.filterTags.length > 0) {
@@ -307,13 +329,13 @@
       } else {
         const hint = document.createElement('div');
         hint.className = 'tag-filter-hint';
-        hint.textContent = '没有同时包含所选标签的图片';
+        hint.textContent = t('没有同时包含所选标签的图片');
         content.appendChild(hint);
       }
     } else {
       const hint = document.createElement('div');
       hint.className = 'tag-filter-hint';
-      hint.textContent = '点击上方标签进行筛选（多选取交集）';
+      hint.textContent = t('点击上方标签进行筛选（多选取交集）');
       content.appendChild(hint);
     }
   }
@@ -338,8 +360,8 @@
   /** 删除标签（从所有图片移除）。 */
   async function deleteTag(tag) {
     const ok = await showModal({
-      title: '删除标签',
-      message: `删除标签「${esc(tag)}」？<br>（会从所有图片上移除）`,
+      title: t('删除标签'),
+      message: t('删除标签') + `「${esc(tag)}」？<br>` + t('（会从所有图片上移除）'),
       type: 'confirm',
     });
     if (!ok) return;
@@ -350,7 +372,7 @@
 
   /** 新建标签。 */
   async function createTag() {
-    const name = await showModal({ title: '新建标签', message: '输入标签名称：', type: 'prompt' });
+    const name = await showModal({ title: t('新建标签'), message: t('输入标签名称：'), type: 'prompt' });
     if (!name) return;
     try {
       await fetch('/api/tags', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) });
@@ -366,10 +388,10 @@
     head.className = 'my-albums-head';
     const title = document.createElement('span');
     title.className = 'section-title';
-    title.textContent = '我的相册';
+    title.textContent = t('我的相册');
     const addBtn = document.createElement('button');
     addBtn.className = 'tool-btn';
-    addBtn.textContent = '＋ 添加文件夹';
+    addBtn.textContent = '＋ ' + t('添加文件夹');
     addBtn.addEventListener('click', addFolder);
     head.appendChild(title);
     head.appendChild(addBtn);
@@ -378,7 +400,7 @@
     if (state.linkedAlbums.length === 0) {
       const empty = document.createElement('div');
       empty.className = 'my-albums-empty';
-      empty.innerHTML = '还没有添加相册文件夹<br>点击「＋ 添加文件夹」浏览并导入你的图片文件夹（直接链接，不复制文件）';
+      empty.innerHTML = t('还没有添加相册文件夹') + '<br>' + t('点击「＋ 添加文件夹」浏览并导入你的图片文件夹（直接链接，不复制文件）');
       section.appendChild(empty);
     } else {
       const grid = document.createElement('div');
@@ -391,12 +413,15 @@
           '<div class="album-cover">' +
           (a.cover_thumb_url ? `<img src="${a.cover_thumb_url}" loading="lazy" alt="">` : '') +
           '</div>' +
-          `<div class="album-meta"><span class="name">${esc(a.name)}</span><span class="count">${a.count} 张</span></div>` +
-          '<span class="album-remove" title="移除链接">✕</span>';
+          `<div class="album-meta"><span class="name">${esc(a.name)}</span><span class="count">${a.count} ${t('张')}</span></div>` +
+          '<span class="album-remove" title="' + t('移除链接') + '">✕</span>';
         card.addEventListener('click', () => {
-          state.prevWasImage = state.inAlbum;   // 记录进入前是否在图片页（「上级」据此回到图片页还是相册页）
           state.root = a.path;
           load(a.path, true);
+        });
+        card.addEventListener('contextmenu', (e) => {
+          e.preventDefault();
+          showAlbumMenu(e.clientX, e.clientY, a.path);
         });
         card.querySelector('.album-remove').addEventListener('click', (e) => {
           e.stopPropagation();
@@ -423,11 +448,19 @@
     bar.className = 'page-path-bar';
     const icon = document.createElement('span');
     icon.className = 'page-path-icon';
-    icon.textContent = '📂';
     const text = document.createElement('span');
     text.className = 'page-path-text';
-    text.textContent = state.path || '（未选择目录）';
-    text.title = state.path || '';
+    if (state.inAlbum) {
+      // 图片页：显示当前目录完整路径
+      icon.textContent = '📂';
+      text.textContent = state.path || t('未选择目录');
+      text.title = state.path || '';
+    } else {
+      // 相册页（根）：显示「相册展示」而不是路径
+      icon.textContent = '🏠';
+      text.textContent = t('相册展示');
+      text.title = '';
+    }
     bar.appendChild(icon);
     bar.appendChild(text);
     content.appendChild(bar);
@@ -436,16 +469,16 @@
   /** 平铺视图（仅在图片页使用）：子相册(可继续下钻) + 该相册图片。 */
   function renderAlbum() {
     if (state.albums.length > 0) {
-      renderAlbumGrid(state.albums, '子相册');
+      renderAlbumGrid(state.albums, t('子相册'));
     }
     if (state.photos.length > 0) {
-      content.appendChild(makeSectionHead('图片（' + state.photos.length + ' 张）'));
+      content.appendChild(makeSectionHead(t('图片') + '（' + state.photos.length + ' ' + t('张') + '）'));
       renderPhotoGrid(state.photos);
     }
     if (state.photos.length === 0 && state.albums.length === 0) {
       const empty = document.createElement('div');
       empty.className = 'empty-hint';
-      empty.textContent = '此相册没有图片';
+      empty.textContent = t('此相册没有图片');
       content.appendChild(empty);
     }
   }
@@ -463,10 +496,11 @@
         '<div class="album-cover">' +
         (a.cover_thumb_url ? `<img src="${a.cover_thumb_url}" loading="lazy" alt="">` : '') +
         '</div>' +
-        `<div class="album-meta"><span class="name">${esc(a.name)}</span><span class="count">${a.count} 张</span></div>`;
-      card.addEventListener('click', () => {
-        state.prevWasImage = state.inAlbum;   // 记录进入前是否在图片页（「上级」据此回到图片页还是相册页）
-        load(a.path, true);
+        `<div class="album-meta"><span class="name">${esc(a.name)}</span><span class="count">${a.count} ${t('张')}</span></div>`;
+      card.addEventListener('click', () => load(a.path, true));
+      card.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        showAlbumMenu(e.clientX, e.clientY, a.path);
       });
       grid.appendChild(card);
     }
@@ -608,7 +642,8 @@
       tr.className = 'album-row';
       tr.dataset.path = a.path;
       tr.innerHTML = '<td class="thumb-cell">📁</td>' +
-        `<td>${esc(a.name)}</td><td class="size-cell"></td><td class="date-cell">${a.count} 张</td>`;
+        `<td>${esc(a.name)} <span class="album-count">${a.count} 张</span></td>` +
+        '<td class="size-cell"></td><td class="date-cell"></td>';
       tr.addEventListener('click', () => load(a.path, true));
       tbody.appendChild(tr);
     }
@@ -666,17 +701,26 @@
     state.rotate = 0;
     state.isFitMode = true;
     viewer.classList.remove('hidden');
+    applyViewerBg();
     updateViewerImage();
   }
 
   function closeViewer() {
     viewer.classList.add('hidden');
     viewerImg.onload = null;
+    state.dragging = false;              // 右键关闭时清理拖拽状态，避免下次打开残留平移
+    viewerStage.classList.remove('dragging');
     if (state.index < 0 && state.droppedUrl) {
       URL.revokeObjectURL(state.droppedUrl);
       state.droppedUrl = null;
       state.droppedName = '';
     }
+  }
+
+  /** 查看器背景色：0=默认灰 1=白 2=黑。改 .viewer 的背景（图片周围环境色），打开查看器/切换图片时保持上次选择。 */
+  const VIEWER_BGS = ['rgba(0, 0, 0, 0.94)', '#ffffff', '#000000'];
+  function applyViewerBg() {
+    viewer.style.background = VIEWER_BGS[state.bg] || VIEWER_BGS[0];
   }
 
   /** 拖入图片：直接在查看器显示（blob URL，非相册列表）。 */
@@ -693,6 +737,25 @@
     state.rotate = 0;
     state.isFitMode = true;
     viewer.classList.remove('hidden');
+    applyViewerBg();
+    viewerImg.onload = () => { fitToWindow(); updateTitle(); };
+    viewerImg.src = state.droppedUrl;
+    updateTitle();
+  }
+
+  /** 预览指定路径的图片（识别结果右键等场景），复用主查看器（可缩放/平移/旋转）。 */
+  function previewFromPath(path, name) {
+    state.index = -1;
+    state.droppedUrl = '/api/photo?path=' + encodeURIComponent(path);
+    state.droppedName = name || '';
+    cancelZoomAnim();
+    state.scale = 1;
+    state.translateX = 0;
+    state.translateY = 0;
+    state.rotate = 0;
+    state.isFitMode = true;
+    viewer.classList.remove('hidden');
+    applyViewerBg();
     viewerImg.onload = () => { fitToWindow(); updateTitle(); };
     viewerImg.src = state.droppedUrl;
     updateTitle();
@@ -713,9 +776,9 @@
 
   function updateTitle() {
     if (state.index < 0) {
-      if (state.droppedName) viewerTitle.textContent = state.droppedName + '（拖入）';
+      if (state.droppedName) viewerTitle.textContent = state.droppedName + t('（拖入）');
       else if (state.pendingName) viewerTitle.textContent = state.pendingName;
-      else viewerTitle.textContent = '图片';
+      else viewerTitle.textContent = t('图片');
       return;
     }
     const p = state.photos[state.index];
@@ -973,8 +1036,14 @@
     // 点击菜单外部 / 滚动 / Esc 关闭
     document.addEventListener('mousedown', (e) => {
       if (!e.target.closest('.ctx-menu, .ctx-submenu')) closeCtxMenu();
+      if (_albumMenu && !e.target.closest('.album-ctx-menu')) closeAlbumMenu();
     });
-    document.addEventListener('scroll', () => closeCtxMenu(), true);
+    // 主内容滚动（翻页等）时关闭菜单；子菜单（标签列表）内部滚动不关闭——否则滚轮滚标签列表会把菜单关掉
+    document.addEventListener('scroll', (e) => {
+      const t = e.target;
+      if (t && t.closest && t.closest('#ctxSubmenu')) return;
+      closeCtxMenu();
+    }, true);
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeCtxMenu(); });
   }
 
@@ -1036,7 +1105,7 @@
       const item = document.createElement('div');
       item.className = 'ctx-sub-item' + (has ? ' active' : '');
       item.textContent = '🏷 ' + t;
-      item.title = has ? '点击移除标签' : '点击添加标签';
+      item.title = has ? t('点击移除标签') : t('点击添加标签');
       item.addEventListener('click', () => toggleCtxTag(t));
       list.appendChild(item);
     }
@@ -1110,7 +1179,7 @@
 
   /** 新建标签并加到当前图片。 */
   async function createTagThenAdd() {
-    const name = await showModal({ title: '新建标签', message: '输入标签名称：', type: 'prompt' });
+    const name = await showModal({ title: t('新建标签'), message: t('输入标签名称：'), type: 'prompt' });
     if (!name) return;
     try {
       await fetch('/api/tags/image', {
@@ -1141,6 +1210,18 @@
 
   // ==================== 一键识别相册（批量） ====================
   let _batchStop = false;       // 用户取消识别
+  let _batchAbort = null;       // 当前识别请求的 AbortController（取消时立即中断挂起的请求）
+
+  /** 上报任务栏进度（HTTP 中转，异步 fire-and-forget，不阻塞 JS 主线程；浏览器版无宿主则忽略）。 */
+  function setTaskbarProgress(value, state) {
+    try {
+      fetch('/api/taskbar-progress', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ value, state }),
+      }).catch(() => { });
+    } catch { }
+  }
   let _batchResults = [];       // [{path, name, thumbUrl, tag}] tag 为空串 = 识别失败
   let _brSelTag = '';           // 预览界面当前选中的标签（'__fail__' = 失败组）
   let _brEditPath = '';         // 正在修改标签的图片路径
@@ -1148,19 +1229,13 @@
   /** 打开识别面板并自动识别。path 来自右键菜单或查看器当前图片；拖入的临时图（blob）无法识别。 */
   async function openAiPanel(path) {
     if (!path || path.startsWith('blob:')) {
-      showModal({ title: '识别角色', message: '拖入的临时图片无法识别，请在相册中打开图片后再识别。' });
+      showModal({ title: t('识别角色'), message: t('拖入的临时图片无法识别，请在相册中打开图片后再识别。') });
       return;
     }
     _aiPath = path;
-    $('aiFile').textContent = '图片：' + path.split(/[\\/]/).pop();
-    $('aiResults').innerHTML = '<div class="ai-hint">识别中…</div>';
+    $('aiFile').textContent = t('图片：') + path.split(/[\\/]/).pop();
+    $('aiResults').innerHTML = '<div class="ai-hint">' + t('识别中…') + '</div>';
     $('aiModal').classList.remove('hidden');
-    // 载入已保存的 API 地址
-    try {
-      const res = await fetch('/api/ai/config');
-      const data = await res.json();
-      $('aiUrlInput').value = data.api_url || '';
-    } catch { }
     runRecognition();
   }
 
@@ -1168,14 +1243,13 @@
   async function runRecognition() {
     if (!_aiPath) return;
     const results = $('aiResults');
-    results.innerHTML = '<div class="ai-hint">识别中…</div>';
+    results.innerHTML = '<div class="ai-hint">' + t('识别中…') + '</div>';
     try {
       const res = await fetch('/api/ai/recognize?path=' + encodeURIComponent(_aiPath), { method: 'POST' });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        const err = data.error || ('识别失败（HTTP ' + res.status + '）');
+        const err = apiErr(data, t('识别失败') + '（HTTP ' + res.status + '）');
         results.innerHTML = '<div class="ai-error">' + err + '</div>';
-        if (!$('aiUrlInput').value.trim()) $('aiUrlInput').focus();
         return;
       }
       renderAiResults(data);
@@ -1218,7 +1292,7 @@
     }
     const hint = document.createElement('div');
     hint.className = 'ai-hint';
-    hint.textContent = '点击「＋ 标签」把角色添加为该图标签';
+    hint.textContent = t('点击「＋ 标签」把角色添加为该图标签');
     results.appendChild(hint);
   }
 
@@ -1236,19 +1310,6 @@
     } catch { }
   }
 
-  /** 保存 API 地址并立即用当前图片重新识别。 */
-  async function saveAiUrl() {
-    const url = $('aiUrlInput').value.trim();
-    try {
-      await fetch('/api/ai/config', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ api_url: url }),
-      });
-    } catch { }
-    runRecognition();
-  }
-
   function closeAiPanel() {
     $('aiModal').classList.add('hidden');
   }
@@ -1262,50 +1323,88 @@
       showModal({ title: '一键识别', message: '此相册没有图片。' });
       return;
     }
-    // 先确认角色识别 API 已配置
+    // 立即显示检测进度框，避免检测期间无反馈像卡住
+    const prog = $('batchProgress');
+    $('bpCount').textContent = t('检测连接…');
+    $('bpBar').parentElement.style.display = 'none';   // 检测阶段隐藏整个进度条轨道
+    $('bpBar').style.width = '0%';
+    $('bpFile').textContent = t('正在检测角色识别 API…');
+    $('bpPath').textContent = '';
+    prog.classList.remove('hidden');
+    const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+    await sleep(30);   // 先让检测界面渲染出来
+
+    // 1) 确认角色识别 API 已配置
+    let cfg = null;
     try {
       const cfgRes = await fetch('/api/ai/config');
-      const cfg = await cfgRes.json().catch(() => ({}));
-      if (!cfg.api_url) {
-        showModal({ title: '一键识别', message: '尚未配置角色识别 API。请先在查看器「🔍 识别」面板中填写 API 地址。' });
+      cfg = await cfgRes.json().catch(() => ({}));
+    } catch { }
+    if (!cfg || !cfg.api_url) {
+      prog.classList.add('hidden');
+      showModal({ title: '一键识别', message: '尚未配置角色识别 API。请到 设置 → 🔍 识别功能 中填写 API 地址。' });
+      return;
+    }
+    // 2) 检测 API 服务是否在线：未连接则提示失败，不进入识别流程（避免进度条空转）
+    try {
+      const pingRes = await fetch('/api/ai/ping');
+      const ping = await pingRes.json().catch(() => ({}));
+      if (!ping.ok) {
+        prog.classList.add('hidden');
+        showModal({ title: t('一键识别'), message: t('角色识别 API 连接失败：') + esc(t(ping.error || '服务未启动或地址不可达')) + t('。请确认识别服务已启动。'), type: 'error' });
         return;
       }
     } catch {
-      showModal({ title: '一键识别', message: '无法读取识别配置，请稍后重试。' });
+      prog.classList.add('hidden');
+      showModal({ title: t('一键识别'), message: t('无法检测角色识别 API 连接，请稍后重试。'), type: 'error' });
       return;
     }
+
+    // 3) 连接正常：进入逐张识别
     _batchStop = false;
     _batchResults = [];
     _brSelTag = '';
-    const prog = $('batchProgress');
     $('bpCount').textContent = '0 / ' + photos.length;
+    $('bpBar').parentElement.style.display = '';   // 识别阶段恢复进度条轨道
     $('bpBar').style.width = '0%';
-    $('bpFile').textContent = '准备识别…';
+    $('bpFile').textContent = t('准备识别…');
     $('bpPath').textContent = '';
-    prog.classList.remove('hidden');
+    setTaskbarProgress(0, 1);   // 任务栏绿色进度条开始（HTTP 异步上报）
 
-    const sleep = (ms) => new Promise(r => setTimeout(r, ms));
     for (let i = 0; i < photos.length; i++) {
       if (_batchStop) break;
       const p = photos[i];
       $('bpCount').textContent = (i + 1) + ' / ' + photos.length;
       $('bpBar').style.width = Math.round((i / photos.length) * 100) + '%';
+      setTaskbarProgress((i + 1) / photos.length, 1);   // 任务栏绿色进度推进
       $('bpFile').textContent = p.name;
       $('bpPath').textContent = p.path;
+      // 每张识别请求带 AbortController：取消/超时都能立即中断，避免进度条挂死
+      const controller = new AbortController();
+      _batchAbort = controller;
+      const timer = setTimeout(() => controller.abort(), 30000);   // 单张 30s 超时
       try {
-        const res = await fetch('/api/ai/recognize?path=' + encodeURIComponent(p.path), { method: 'POST' });
+        const res = await fetch('/api/ai/recognize?path=' + encodeURIComponent(p.path),
+          { method: 'POST', signal: controller.signal });
         const data = await res.json().catch(() => ({}));
         if (res.ok && data.top && data.top.length) {
           _batchResults.push({ path: p.path, name: p.name, thumbUrl: p.thumb_url, tag: data.top[0].class });
         } else {
-          _batchResults.push({ path: p.path, name: p.name, thumbUrl: p.thumb_url, tag: '', err: data.error || '识别失败' });
+          _batchResults.push({ path: p.path, name: p.name, thumbUrl: p.thumb_url, tag: '', err: apiErr(data, t('识别失败')) });
         }
-      } catch {
-        _batchResults.push({ path: p.path, name: p.name, thumbUrl: p.thumb_url, tag: '', err: '无法连接识别服务' });
+      } catch (err) {
+        // 用户取消或单张超时（AbortError）不记为失败；只有真正网络错误才记为失败
+        if (!(err && err.name === 'AbortError') && !_batchStop) {
+          _batchResults.push({ path: p.path, name: p.name, thumbUrl: p.thumb_url, tag: '', err: t('无法连接识别服务') });
+        }
+      } finally {
+        clearTimeout(timer);
+        _batchAbort = null;
       }
       await sleep(0);   // 让进度条渲染
     }
     prog.classList.add('hidden');
+    setTaskbarProgress(0, 0);   // 识别结束/停止：清除任务栏进度
     if (!_batchResults.length) return;
     openBatchReview();
   }
@@ -1317,8 +1416,9 @@
     const okCount = _batchResults.filter(r => r.tag).length;
     const failCount = total - okCount;
     $('brHint').textContent =
-      '共识别 ' + total + ' 张，成功 ' + okCount + ' 张' + (failCount ? '，' + failCount + ' 张失败' : '') +
-      '。点标签查看图片，点图片可修改标签；「确定写入」才会保存。';
+      t('共识别') + ' ' + total + ' ' + t('张，成功') + ' ' + okCount + ' ' + t('张') +
+      (failCount ? '，' + failCount + ' ' + t('张失败') : '') +
+      '。' + t('点标签查看图片，点图片可修改标签；「确定写入」才会保存。');
     const first = _batchResults.find(r => r.tag);
     _brSelTag = first ? first.tag : '__fail__';
     renderBatchTags();
@@ -1346,12 +1446,12 @@
     if (failCount > 0) {
       const chip = document.createElement('button');
       chip.className = 'br-chip fail' + (_brSelTag === '__fail__' ? ' active' : '');
-      chip.textContent = '⚠ 识别失败 (' + failCount + ')';
+      chip.textContent = '⚠ ' + t('识别失败') + ' (' + failCount + ')';
       chip.addEventListener('click', () => { _brSelTag = '__fail__'; renderBatchTags(); renderBatchGrid(); });
       box.appendChild(chip);
     }
     if (!tags.length && !failCount) {
-      box.innerHTML = '<div class="review-empty">没有识别结果</div>';
+      box.innerHTML = '<div class="review-empty">' + t('没有识别结果') + '</div>';
     }
   }
 
@@ -1374,10 +1474,15 @@
       img.alt = '';
       const label = document.createElement('div');
       label.className = 'br-card-label' + (it.tag ? '' : ' fail');
-      label.textContent = it.tag || (it.err || '识别失败');
+      label.textContent = it.tag || (it.err || t('识别失败'));
       card.appendChild(img);
       card.appendChild(label);
       card.addEventListener('click', () => openBrEdit(it.path));
+      // 右键图片：打开查看器预览（可缩放/平移/旋转）
+      card.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        previewFromPath(it.path, it.name);
+      });
       grid.appendChild(card);
     }
   }
@@ -1487,27 +1592,20 @@
       if (img) showDroppedImage(img);
     });
     // 顶部工具栏
-    $('btnHome').addEventListener('click', goHome);
+    $('btnHome').addEventListener('click', () => {
+      if (!viewer.classList.contains('hidden')) return;   // 查看器打开时忽略，防误触
+      goHome();
+    });
     $('btnTags').addEventListener('click', openTagPage);
     $('btnAddFolder').addEventListener('click', addFolder);
     $('btnBack').addEventListener('click', async () => {
+      if (!viewer.classList.contains('hidden')) return;   // 查看器打开时忽略，防误触
       // 标签页：退出回上一页
       if (state.tagPage) { state.tagPage = false; render(); return; }
-      // 已在相册根：图片页 → 回相册页；相册页根处按钮已禁用
-      if (state.path === state.root) {
-        if (state.inAlbum) { await loadAlbums(); load(state.root, false); }
-        return;
-      }
-      // 图片页回上一级；到相册根：进入该相册前若正处于根的图片页 → 回到根的图片页，
-      // 否则回相册页（并刷新「我的相册」列表）——修复「上级」后相册在下方重复显示的问题
-      if (state.parent) {
-        if (state.parent === state.root) {
-          if (state.prevWasImage) load(state.root, true);
-          else { await loadAlbums(); load(state.root, false); }
-        } else {
-          load(state.parent, true);
-        }
-      }
+      // 图片页：无条件回父目录的图片页（只退一级，无论父目录是否有图片）
+      if (state.parent) { load(state.parent, true); return; }
+      // 相册根图片页（无父目录）：回相册页
+      if (state.inAlbum) { await loadAlbums(); load(state.root, false); }
     });
     $('viewAlbum').addEventListener('click', () => { state.view = 'album'; syncViewToggle(); render(); });
     $('viewList').addEventListener('click', () => { state.view = 'list'; syncViewToggle(); render(); });
@@ -1526,8 +1624,131 @@
     $('settingsCloseBtn').addEventListener('click', closeSettings);
     $('assocApplyBtn').addEventListener('click', applyAssoc);
     $('settingsModal').addEventListener('mousedown', (e) => { if (e.target === $('settingsModal')) closeSettings(); });
+    // 设置：语言切换 —— 点按钮弹出语言模态（每项带国旗），选择即保存 + 立即应用
+    $('langBtn').addEventListener('click', openLangModal);
+    $('langModal').addEventListener('mousedown', (e) => { if (e.target === $('langModal')) closeLangModal(); });
+    // 设置：左侧板块切换
+    document.querySelectorAll('.settings-nav-item').forEach((btn) => {
+      btn.addEventListener('click', () => switchSettingsPanel(btn.dataset.panel));
+    });
+    // 设置：极速查看器开关（勾选即保存）
+    $('fastViewerCb')?.addEventListener('change', async (e) => {
+      try {
+        await fetch('/api/fastviewer', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ fast_viewer: e.target.checked }),
+        });
+      } catch { }
+    });
+    // 设置：显示详细错误信息（勾选即保存）
+    $('showDetailCb').addEventListener('change', (e) => {
+      fetch('/api/prefs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ show_detail_error: e.target.checked }),
+      }).catch(() => { });
+    });
+    // 工具栏：主题切换（浅色 / 深色）——点击即切换并保存
+    $('btnTheme').addEventListener('click', toggleTheme);
+    // 设置：关闭模式（最小化到托盘 / 退出程序）——勾选即保存
+    document.querySelectorAll('#panel-tray input[name="closeMode"]').forEach((r) => {
+      r.addEventListener('change', () => {
+        fetch('/api/prefs', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ close_to_tray: r.value === 'tray' }),
+        }).catch(() => { });
+      });
+    });
+    // 设置：关于——启用更新检查开关（即时保存；关闭后不检查也不显示 chip）
+    $('updateCheckCb')?.addEventListener('change', (e) => {
+      _updateCheckEnabled = e.target.checked;
+      if (_updateCheckEnabled) checkUpdateOnStart();
+      else applyUpdateChip(null);
+      const btn = $('aboutUpdateBtn');
+      if (btn) btn.disabled = !_updateCheckEnabled;
+      fetch('/api/prefs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ update_check_enabled: e.target.checked }),
+      }).catch(() => { });
+    });
+    // 设置：关于——打开 GitHub 项目 / 检查更新
+    $('aboutGithubBtn')?.addEventListener('click', () => {
+      fetch('/api/open-external?url=' + encodeURIComponent('https://github.com/HopingStar/Hoping-Image-Viewer'), { method: 'POST' })
+        .catch(() => showModal({ title: t('提示'), message: t('无法打开浏览器'), type: 'error' }));
+    });
+    // 标题栏橙色更新 chip 点击 → 用默认浏览器打开最新版 Release 页面
+    // 阻止 mousedown 冒泡到标题栏：否则按下会触发 start_drag（拖动窗口）把 click 吞掉
+    $('updateChip')?.addEventListener('mousedown', (e) => e.stopPropagation());
+    $('updateChip')?.addEventListener('click', () => {
+      if (!_updateHasNew) return;
+      fetch('/api/open-external?url=' + encodeURIComponent('https://github.com/HopingStar/Hoping-Image-Viewer/releases/latest'), { method: 'POST' })
+        .catch(() => showModal({ title: t('提示'), message: t('无法打开浏览器'), type: 'error' }));
+    });
+    $('aboutUpdateBtn')?.addEventListener('click', async () => {
+      const res = $('aboutUpdateResult');
+      res.textContent = t('正在检查更新…');
+      res.className = 'about-update-result';
+      try {
+        const resp = await fetch('/api/check-update');
+        const d = await resp.json();
+        if (!d.ok || d.error) {
+          res.textContent = t('检查失败：') + t(d.error || '未知错误');
+          res.className = 'about-update-result about-update-error';
+          return;
+        }
+        if (d.has_update) {
+          res.innerHTML = '发现新版本：v' + d.latest + '（当前 v' + d.current + '）<br>请前往 GitHub Releases 下载更新。';
+          res.className = 'about-update-result about-update-new';
+        } else {
+          res.textContent = t('当前已是最新版本') + '（v' + d.current + '）';
+          res.className = 'about-update-result';
+        }
+      } catch {
+        res.textContent = t('检查失败：无法连接服务');
+        res.className = 'about-update-result about-update-error';
+      }
+    });
+    // 设置：查看器右键关闭开关——勾选即保存
+    $('rccCb')?.addEventListener('change', (e) => {
+      _rightClickClose = e.target.checked;
+      fetch('/api/prefs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ right_click_close_viewer: e.target.checked }),
+      }).catch(() => { });
+    });
+    // 设置：识别功能开关——勾选即保存并立即显隐所有识别入口
+    $('aiEnabledCb')?.addEventListener('change', (e) => {
+      _aiEnabled = e.target.checked;
+      applyAiVisibility();
+      fetch('/api/prefs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ai_enabled: e.target.checked }),
+      }).catch(() => { });
+    });
+    // 设置：图片编辑器路径（查看器「✏️ 编辑」用哪个软件打开图片；空 = 自动探测画图 / Paint.NET）
+    $('editorBrowseBtn')?.addEventListener('click', async () => {
+      try {
+        const resp = await fetch('/api/edit/pick?title=' + encodeURIComponent(t('选择图片编辑器（exe）')));
+        const d = await resp.json();
+        if (d && d.path && $('editorPathInput')) $('editorPathInput').value = d.path;
+      } catch {
+        showModal({ title: t('提示'), message: t('无法打开文件选择框'), type: 'error' });
+      }
+    });
+    loadPrefs().then(checkUpdateOnStart);   // 加载应用偏好并按识别开关显隐入口；启动自动检查更新
 
     // 查看器按钮
+    // 查看器内右键 → 直接关闭（不用移到右上角关闭按钮）；设置禁用后恢复默认（右键可拖拽）
+    viewer.addEventListener('contextmenu', (e) => {
+      if (!_rightClickClose) return;
+      e.preventDefault();
+      closeViewer();
+    });
     $('viewerClose').addEventListener('click', closeViewer);
     $('btnZoomIn').addEventListener('click', () => zoomBy(ZOOM_STEP));
     $('btnZoomOut').addEventListener('click', () => zoomBy(1 / ZOOM_STEP));
@@ -1539,31 +1760,69 @@
     $('btnExport').addEventListener('click', exportRotated);
     $('btnRecognize').addEventListener('click', () => {
       if (state.index >= 0 && state.photos[state.index]) openAiPanel(state.photos[state.index].path);
-      else showModal({ title: '识别角色', message: '拖入的临时图片无法识别，请在相册中打开图片后再识别。' });
+      else showModal({ title: t('识别角色'), message: t('拖入的临时图片无法识别，请在相册中打开图片后再识别。') });
+    });
+    // 查看器背景：默认灰 → 白 → 黑 循环切换（切换即持久化，下次启动保持）
+    $('btnBg').addEventListener('click', () => {
+      state.bg = (state.bg + 1) % 3;
+      applyViewerBg();
+      fetch('/api/prefs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ viewer_bg: state.bg }),
+      }).catch(() => { });
+    });
+    // 查看器「编辑」：用配置的 / 系统默认图片编辑器打开当前图片；
+    // 未配置且未探测到编辑器时，打开设置「图片编辑」面板引导用户指定（不弹系统打开方式，避免误改文件关联）
+    $('btnEdit').addEventListener('click', () => {
+      const p = state.index >= 0 && state.photos[state.index] ? state.photos[state.index] : null;
+      if (!p) {
+        showModal({ title: t('编辑图片'), message: t('拖入的临时图片无法在外部编辑器中打开，请在相册中打开图片。'), type: 'error' });
+        return;
+      }
+      fetch('/api/edit?path=' + encodeURIComponent(p.path), { method: 'POST' })
+        .then(async (r) => {
+          const d = await r.json().catch(() => ({}));
+          if (d.need_config) {
+            // 未配置编辑器：直接打开设置「图片编辑」面板引导配置（不弹报错弹窗）
+            openSettings();
+            switchSettingsPanel('editor');
+            return;
+          }
+          if (!r.ok || !d.ok) {
+            showModal({ title: t('提示'), message: esc(t(d.error || '无法打开外部编辑器')), type: 'error' });
+          }
+        })
+        .catch(() => showModal({ title: t('提示'), message: t('无法打开外部编辑器'), type: 'error' }));
     });
     $('prevBtn').addEventListener('click', prev);
     $('nextBtn').addEventListener('click', next);
 
     // 角色识别面板
-    $('aiSaveUrlBtn').addEventListener('click', saveAiUrl);
     $('aiReRunBtn').addEventListener('click', runRecognition);
     $('aiCloseBtn').addEventListener('click', closeAiPanel);
-    $('aiUrlInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') saveAiUrl(); });
     $('aiModal').addEventListener('mousedown', (e) => { if (e.target === $('aiModal')) closeAiPanel(); });
 
     // 一键识别相册
     $('btnBatch').addEventListener('click', openBatchRecognize);
-    $('bpCancelBtn').addEventListener('click', () => { _batchStop = true; });
+    $('bpCancelBtn').addEventListener('click', () => {
+      _batchStop = true;
+      _batchAbort?.abort();   // 立即中断当前挂起的识别请求，取消即时生效
+    });
     $('brCancelBtn').addEventListener('click', cancelBatchReview);
     $('brOkBtn').addEventListener('click', confirmBatch);
     $('brEditCancelBtn').addEventListener('click', () => { $('brEdit').classList.add('hidden'); });
     $('brEditOkBtn').addEventListener('click', saveBrEdit);
     $('brEditInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') saveBrEdit(); });
     $('brEdit').addEventListener('mousedown', (e) => { if (e.target === $('brEdit')) $('brEdit').classList.add('hidden'); });
-    $('batchReview').addEventListener('mousedown', (e) => { if (e.target === $('batchReview')) cancelBatchReview(); });
+    // 更换封面弹窗：取消 / 点击外部关闭
+    $('coverCancelBtn').addEventListener('click', () => { $('coverModal').classList.add('hidden'); });
+    $('coverModal').addEventListener('mousedown', (e) => { if (e.target === $('coverModal')) $('coverModal').classList.add('hidden'); });
 
     document.addEventListener('keydown', (e) => {
       if (e.key !== 'Escape') return;
+      if (_albumMenu) { closeAlbumMenu(); return; }
+      if (!$('coverModal').classList.contains('hidden')) { $('coverModal').classList.add('hidden'); return; }
       if (!$('aiModal').classList.contains('hidden')) { closeAiPanel(); return; }
       if (!$('brEdit').classList.contains('hidden')) { $('brEdit').classList.add('hidden'); return; }
       if (!$('batchReview').classList.contains('hidden')) { cancelBatchReview(); return; }
@@ -1629,7 +1888,7 @@
     // 排序控件同步（字段下拉 + 方向按钮）
     $('sortSelect').value = state.sortBy;
     $('sortOrderBtn').textContent = state.sortOrder === 'desc' ? '↓' : '↑';
-    $('sortOrderBtn').title = state.sortOrder === 'desc' ? '当前降序，点击切换升序' : '当前升序，点击切换降序';
+    $('sortOrderBtn').title = state.sortOrder === 'desc' ? t('当前降序，点击切换升序') : t('当前升序，点击切换降序');
   }
 
   // ==================== 模态弹窗（替代 alert/confirm/prompt） ====================
@@ -1649,6 +1908,8 @@
 
       titleEl.textContent = title || '';
       msgEl.innerHTML = message || '';
+      // 错误类型（type:'error'）：消息红色字体
+      msgEl.classList.toggle('modal-error', type === 'error');
       const isPrompt = type === 'prompt';
       const hasCancel = type === 'confirm' || type === 'prompt';
       input.style.display = isPrompt ? 'block' : 'none';
@@ -1688,16 +1949,229 @@
     });
   }
 
+  // ==================== 设置：应用偏好（关闭模式 / 识别功能开关） ====================
+
+  let _aiEnabled = true;   // 是否启用角色识别功能（关闭时隐藏所有识别入口）
+  let _rightClickClose = true;   // 查看器内右键是否直接关闭（关闭后右键可拖拽）
+  let _updateCheckEnabled = true;   // 启动时自动检查更新（关闭后不检查也不显示标题栏 chip）
+  let _updateHasNew = false;        // 是否有可用更新（橙色 chip 点击打开 Release 页面）
+  let _langPending = null;          // 语言暂存选择（点语言项仅暂存；点设置「应用」才保存并刷新整页）
+
+  /** 启动时加载应用偏好：识别入口显隐 + 恢复主查看器背景（0=灰 1=白 2=黑）。 */
+  async function loadPrefs() {
+    try {
+      const resp = await fetch('/api/prefs');
+      const d = await resp.json();
+      _aiEnabled = d.ai_enabled !== false;
+      _rightClickClose = d.right_click_close_viewer !== false;
+      _updateCheckEnabled = d.update_check_enabled !== false;
+      applyAiVisibility();
+      if (typeof d.viewer_bg === 'number') {
+        state.bg = d.viewer_bg;
+        applyViewerBg();
+      }
+    } catch { }
+  }
+
+  /** 根据「启用识别功能」开关显隐所有识别入口。 */
+  function applyAiVisibility() {
+    const show = _aiEnabled;
+    const batch = $('btnBatch'); if (batch) batch.style.display = show ? '' : 'none';
+    const rec = $('btnRecognize'); if (rec) rec.style.display = show ? '' : 'none';
+    const item = document.querySelector('#ctxMenu [data-act="recognize"]');
+    if (item) item.style.display = show ? '' : 'none';
+  }
+
+  /** 打开设置时回填「系统托盘」关闭模式单选 +「识别功能」开关。 */
+  async function renderPrefs() {
+    try {
+      const resp = await fetch('/api/prefs');
+      const d = await resp.json();
+      const tray = document.querySelector('#panel-tray input[value="tray"]');
+      const exit = document.querySelector('#panel-tray input[value="exit"]');
+      if (d.close_to_tray !== false) { if (tray) tray.checked = true; }
+      else { if (exit) exit.checked = true; }
+      const ai = $('aiEnabledCb');
+      if (ai) ai.checked = d.ai_enabled !== false;
+      const ed = $('editorPathInput');
+      if (ed) ed.value = d.editor_path || '';
+      const rcc = $('rccCb');
+      if (rcc) rcc.checked = d.right_click_close_viewer !== false;
+      const sd = $('showDetailCb');
+      if (sd) sd.checked = !!d.show_detail_error;
+      updateLangBtn(d.lang || '');
+    } catch { }
+    // 回填角色识别 API 地址（存于 /api/ai/config）
+    try {
+      const res = await fetch('/api/ai/config');
+      const dc = await res.json();
+      const aiUrl = $('aiUrlCfgInput');
+      if (aiUrl) aiUrl.value = dc.api_url || '';
+    } catch { }
+  }
+
   // ==================== 设置：文件关联 ====================
 
+  /** 打开设置弹窗时的初始关联格式集合（点「应用」时据此判断是否真的修改了关联配置）。 */
+  let assocInitial = new Set();
+
   /** 打开设置弹窗并拉取当前支持的格式与关联状态。 */
+  /** 语言项 HTML（返回用于 innerHTML）：system=🌐 跟随系统，其他=SVG 国旗 + 母语名。 */
+  function langLabel(code) {
+    const it = I18N.LANG_LIST.find((x) => x.code === code);
+    if (code === 'system' || !code) return '🌐 ' + t('跟随系统 / Auto');
+    const flag = it ? it.flag : '🌐';
+    return flag + ' ' + (it ? it.label : '');
+  }
+
+  /** 刷新设置里「语言」按钮显示的当前语言。 */
+  function updateLangBtn(saved) {
+    const btn = $('langBtn');
+    if (!btn) return;
+    const code = (saved && saved !== I18N.SYSTEM) ? saved : I18N.SYSTEM;
+    btn.innerHTML = langLabel(code === I18N.SYSTEM ? 'system' : code);
+  }
+
+  let _theme = 'dark';   // 主界面主题：dark / light（持久化到设置）
+
+  /** 应用主题到主界面（浅色 / 深色）；Flash 原生窗口不参与。 */
+  function applyTheme(theme) {
+    _theme = theme === 'light' ? 'light' : 'dark';
+    document.body.classList.toggle('theme-light', _theme === 'light');
+    const btn = $('btnTheme');
+    if (btn) { btn.textContent = _theme === 'light' ? '☀️' : '🌙'; btn.title = t('切换主题（浅色 / 深色）'); }
+  }
+
+  /** 切换主题并保存到设置。 */
+  function toggleTheme() {
+    const next = _theme === 'light' ? 'dark' : 'light';
+    applyTheme(next);
+    fetch('/api/prefs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ theme: next }),
+    }).catch(() => { });
+  }
+
+  function openLangModal() {
+    const m = $('langModal');
+    if (m) m.classList.remove('hidden');
+    renderLangList();
+  }
+
+  function closeLangModal() {
+    const m = $('langModal');
+    if (m) m.classList.add('hidden');
+  }
+
+  /** 生成语言列表（每项带国旗 + 母语名；高亮 pending 暂存选择或当前语言）。 */
+  function renderLangList() {
+    const list = $('langList');
+    if (!list) return;
+    const saved = _langPending !== null ? _langPending : (I18N.savedLang() || '');
+    const cur = saved || 'system';
+    list.innerHTML = '';
+    I18N.LANG_LIST.forEach((it) => {
+      const off = document.createElement('div');
+      off.className = 'lang-item' + (it.code === cur ? ' active' : '');
+      off.innerHTML = langLabel(it.code === 'system' ? 'system' : it.code);
+      off.addEventListener('click', () => setLang(it.code));
+      list.appendChild(off);
+    });
+  }
+
+  /** 选择语言：保存到后端 + 立即应用新语言到界面 + 关闭弹窗。 */
+  /** 点语言项：仅暂存选择（按钮预览），不立即生效；点设置弹窗「应用」才保存并整页刷新。 */
+  function setLang(code) {
+    _langPending = code === 'system' ? '' : code;
+    closeLangModal();
+    updateLangBtn(code === 'system' ? 'system' : code);
+  }
+
   async function openSettings() {
     $('settingsModal').classList.remove('hidden');
+    switchSettingsPanel('fastviewer');
+    await renderFastViewer();
+    await renderPrefs();
     await renderAssocList();
+    await renderAbout();
+  }
+
+  /** 关于板块：显示当前版本号 + 更新开关回填 + 检查按钮可用状态。 */
+  async function renderAbout() {
+    try {
+      const resp = await fetch('/api/version');
+      const d = await resp.json();
+      const el = $('aboutVersion');
+      if (el) el.textContent = '版本：v' + (d.version || '?');
+    } catch { }
+    const cb = $('updateCheckCb');
+    if (cb) cb.checked = _updateCheckEnabled;
+    const btn = $('aboutUpdateBtn');
+    if (btn) btn.disabled = !_updateCheckEnabled;
+  }
+
+  /** 启动/手动检查更新并按结果显示标题栏 chip。 */
+  async function checkUpdateOnStart() {
+    if (!_updateCheckEnabled) { applyUpdateChip(null); return; }
+    try {
+      const resp = await fetch('/api/check-update');
+      const d = await resp.json();
+      applyUpdateChip(d);
+    } catch {
+      applyUpdateChip({ ok: false, offline: false, error: t('无法连接服务') });
+    }
+  }
+
+  /** 标题栏更新 chip：橙=有新版本（可点击），红=获取失败，灰=离线；禁用更新/无更新 = 隐藏。 */
+  function applyUpdateChip(d) {
+    const chip = $('updateChip');
+    if (!chip) return;
+    _updateHasNew = !!(d && d.ok && d.has_update);
+    if (!_updateCheckEnabled || !d) { chip.className = 'update-chip hidden'; chip.textContent = ''; return; }
+    if (d.ok) {
+      if (d.has_update) {
+        chip.textContent = 'v' + d.latest + ' ' + t('可更新');
+        chip.className = 'update-chip update-chip-new';
+        chip.title = t('发现新版本') + ' v' + d.latest + '（' + t('当前') + ' v' + d.current + '），' + t('点击打开 Release 页面');
+      } else {
+        chip.className = 'update-chip hidden';
+        chip.textContent = '';
+      }
+    } else if (d.offline) {
+      chip.textContent = t('离线状态');
+      chip.className = 'update-chip update-chip-offline';
+      chip.title = t('未连接到网络，无法检查更新');
+    } else {
+      chip.textContent = t('无法获取更新信息');
+      chip.className = 'update-chip update-chip-error';
+      chip.title = t('检查更新失败') + '：' + (d.error ? t(d.error) : '');
+    }
+  }
+
+  /** 设置：切换左侧板块（高亮左侧项 + 显示右侧对应面板）。 */
+  function switchSettingsPanel(panel) {
+    document.querySelectorAll('.settings-nav-item').forEach((b) => {
+      b.classList.toggle('active', b.dataset.panel === panel);
+    });
+    document.querySelectorAll('.settings-panel').forEach((p) => {
+      p.classList.toggle('hidden', p.id !== 'panel-' + panel);
+    });
   }
 
   function closeSettings() {
     $('settingsModal').classList.add('hidden');
+  }
+
+  /** 极速查看器开关：拉取当前状态回填勾选框。 */
+  async function renderFastViewer() {
+    const cb = $('fastViewerCb');
+    if (!cb) return;
+    try {
+      const resp = await fetch('/api/fastviewer');
+      const data = await resp.json();
+      cb.checked = !!data.fast_viewer;
+    } catch { }
   }
 
   /** 渲染文件关联勾选列表（勾选状态 = 当前注册表中的关联状态）。 */
@@ -1718,7 +2192,9 @@
       return;
     }
     $('assocApplyBtn').style.display = '';
+    assocInitial = new Set();
     for (const f of data.formats || []) {
+      if (f.associated) assocInitial.add(f.ext);
       const row = document.createElement('label');
       row.className = 'assoc-row';
       const cb = document.createElement('input');
@@ -1733,10 +2209,48 @@
     }
   }
 
-  /** 应用文件关联：勾选的格式建立关联，未勾选的解除。 */
+  /** 应用文件关联：勾选的格式建立关联，未勾选的解除。
+   * 若勾选结果与打开设置时完全一致（未修改关联配置）：不刷新系统设置，只提示「设置应用成功」；
+   * 仅当关联配置真的变化时才调用后端刷新系统关联并提示「文件关联已更新」。 */
   async function applyAssoc() {
+    // 「应用」统一保存图片编辑器路径（含清空 = 恢复自动探测画图 / Paint.NET）
+    try {
+      await fetch('/api/prefs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ editor_path: ($('editorPathInput')?.value || '').trim() }),
+      });
+    } catch { }
+    // 「应用」统一保存角色识别 API 地址（含清空）
+    try {
+      await fetch('/api/ai/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ api_url: ($('aiUrlCfgInput')?.value || '').trim() }),
+      });
+    } catch { }
+    // 语言：若暂存了选择，点「应用」保存并整页刷新（语言需 reload 才全界面生效）
+    if (_langPending !== null) {
+      try {
+        await fetch('/api/prefs', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ lang: _langPending }),
+        });
+      } catch { }
+      _langPending = null;
+      location.reload();
+      return;
+    }
     const checked = Array.from(document.querySelectorAll('#assocList input[type="checkbox"]:checked'))
       .map((c) => c.value);
+    // 检测：勾选集合是否与初始关联集合一致（未修改配置）
+    const unchanged = checked.length === assocInitial.size && checked.every((e) => assocInitial.has(e));
+    if (unchanged) {
+      closeSettings();
+      showModal({ title: t('提示'), message: t('设置应用成功'), type: 'alert' });
+      return;
+    }
     try {
       const resp = await fetch('/api/settings/fileassoc', {
         method: 'POST',
@@ -1744,18 +2258,96 @@
         body: JSON.stringify({ extensions: checked }),
       });
       if (!resp.ok) {
-        const err = await resp.json().catch(() => ({ error: '应用失败' }));
+        const err = await resp.json().catch(() => ({ error: t('应用失败') }));
         closeSettings();
-        showModal({ title: '提示', message: esc(err.error || '应用失败'), type: 'alert' });
+        showModal({ title: t('提示'), message: esc(t(err.error || '应用失败')), type: 'error' });
         return;
       }
       closeSettings();
-      showModal({ title: '提示',
-        message: '文件关联已更新，已加入打开方式。<br>要设为双击默认打开：右键任意图片 → 打开方式 → Hoping Image Viewer → 勾选「始终使用此应用」。',
+      showModal({ title: t('提示'),
+        message: t('文件关联已更新，已加入打开方式。<br>要设为双击默认打开：右键任意图片 → 打开方式 → Hoping Image Viewer → 勾选「始终使用此应用」。'),
         type: 'alert' });
     } catch {
       closeSettings();
-      showModal({ title: '提示', message: '应用失败：无法连接服务', type: 'alert' });
+      showModal({ title: t('提示'), message: t('应用失败：无法连接服务'), type: 'error' });
+    }
+  }
+
+  // ==================== 相册右键菜单：更换封面 ====================
+
+  let _albumMenu = null;
+  let _albumMenuPath = '';
+
+  /** 相册卡右键 → 弹出浮动菜单（更换封面）。 */
+  function showAlbumMenu(x, y, albumPath) {
+    closeAlbumMenu();
+    _albumMenuPath = albumPath;
+    const menu = document.createElement('div');
+    menu.className = 'album-ctx-menu';
+    menu.style.left = Math.min(x, window.innerWidth - 160) + 'px';
+    menu.style.top = Math.min(y, window.innerHeight - 60) + 'px';
+    const item = document.createElement('div');
+    item.className = 'album-ctx-item';
+    item.textContent = '🖼️ 更换封面';
+    item.addEventListener('click', () => { closeAlbumMenu(); openCoverPicker(_albumMenuPath); });
+    menu.appendChild(item);
+    document.body.appendChild(menu);
+    _albumMenu = menu;
+  }
+
+  function closeAlbumMenu() {
+    if (_albumMenu) { _albumMenu.remove(); _albumMenu = null; }
+  }
+
+  /** 打开更换封面界面：列出该相册（直接层）全部图片，点选设为封面。 */
+  async function openCoverPicker(albumPath) {
+    const name = albumPath.split(/[\\/]/).pop() || albumPath;
+    $('coverName').textContent = '相册：' + name;
+    const grid = $('coverGrid');
+    grid.innerHTML = '<div class="cover-hint">加载中…</div>';
+    $('coverModal').classList.remove('hidden');
+    try {
+      const resp = await fetch('/api/photos?path=' + encodeURIComponent(albumPath));
+      const data = await resp.json();
+      const photos = data.photos || [];
+      grid.innerHTML = '';
+      if (!photos.length) {
+        grid.innerHTML = '<div class="cover-hint">此相册没有可直接选择的图片<br>请在相册内（含各子相册）分别设置</div>';
+        return;
+      }
+      for (const p of photos) {
+        const cell = document.createElement('div');
+        cell.className = 'cover-cell';
+        const img = document.createElement('img');
+        img.src = p.thumb_url;
+        img.loading = 'lazy';
+        img.title = p.name;
+        cell.appendChild(img);
+        cell.addEventListener('click', () => setAlbumCover(albumPath, p.path));
+        grid.appendChild(cell);
+      }
+    } catch {
+      grid.innerHTML = '<div class="cover-hint">加载失败</div>';
+    }
+  }
+
+  /** 设置相册封面并刷新当前界面。 */
+  async function setAlbumCover(albumPath, coverPath) {
+    try {
+      const resp = await fetch('/api/covers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ album_path: albumPath, cover_path: coverPath }),
+      });
+      if (!resp.ok) {
+        const d = await resp.json().catch(() => ({}));
+        showModal({ title: t('提示'), message: esc(t(d.error || '设置失败')), type: 'error' });
+        return;
+      }
+      $('coverModal').classList.add('hidden');
+      render();   // 刷新当前页，相册封面更新
+    } catch {
+      showModal({ title: t('提示'), message: t('设置失败：无法连接服务'), type: 'error' });
     }
   }
 
@@ -1847,6 +2439,17 @@
   }
 
   async function init() {
+    // 先加载界面语言（后端设置的 lang，空=跟随系统），应用翻译后再渲染，保证首屏即正确
+    try {
+      const lr = await fetch('/api/prefs');
+      const ld = await lr.json();
+      const savedLang = ld.lang || '';
+      I18N.setSaved(savedLang);
+      I18N.apply(savedLang);
+      applyTheme(ld.theme || 'dark');
+    } catch {
+      I18N.apply('');
+    }
     bindEvents();
     loadVersion();
     // 主进程主动推送（单实例/窗口隐藏时，轮询会被 Chromium 节流，用此直达打开图片）

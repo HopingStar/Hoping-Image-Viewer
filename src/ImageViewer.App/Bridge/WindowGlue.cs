@@ -14,6 +14,7 @@ public static class WindowGlue
             is_maximized: () => Promise.resolve(!!h.is_maximized()),
             close: () => h.close(),
             pick_folder: () => h.pick_folder(),
+            pick_editor_exe: () => h.pick_editor_exe(),
           };
         })();
         """;

@@ -11,13 +11,15 @@ public sealed class ImageService
     private const int ThumbCacheLimit = 500;
     private readonly ConcurrentDictionary<string, byte[]> _thumbCache = new();
     private readonly ThumbCache _thumbDisk = new();   // 磁盘缩略图缓存（AES 加密，程序同目录 .thumbcache/）
+    private readonly CoverStore _covers;              // 相册自定义封面（未配置用默认第一张）
 
     /// <summary>默认图片目录（绝对路径）。</summary>
     public string Root { get; }
 
-    public ImageService(string? configuredRoot)
+    public ImageService(string? configuredRoot, CoverStore covers)
     {
         Root = ResolveConfiguredRoot(configuredRoot);
+        _covers = covers;
     }
 
     // ---------- 目录扫描 ----------
@@ -68,6 +70,7 @@ public sealed class ImageService
             .Select(DescribeAlbum)
             .Where(a => a is not null)
             .Cast<AlbumInfo>()
+            .Select(ApplyCover)              // 应用相册自定义封面（未配置用默认第一张）
             .OrderBy(a => a.Name, NaturalComparer.Instance)
             .ToList();
 
@@ -88,6 +91,20 @@ public sealed class ImageService
         var all = EnumerateImages(dir).ToList();
         if (all.Count == 0) return null;
         return new AlbumInfo(Path.GetFileName(dir), dir, all.Count, ThumbUrl(all[0]));
+    }
+
+    /// <summary>把相册的自定义封面应用到相册信息（有配置则替换 cover_thumb_url）。</summary>
+    private AlbumInfo ApplyCover(AlbumInfo album)
+    {
+        var cover = _covers.Get(album.Path);
+        return string.IsNullOrWhiteSpace(cover) ? album : album with { CoverThumbUrl = ThumbUrl(cover) };
+    }
+
+    /// <summary>描述相册并应用自定义封面（供「已链接相册」列表等场景）。</summary>
+    public AlbumInfo? DescribeAlbumWithCover(string dir)
+    {
+        var a = DescribeAlbum(dir);
+        return a is null ? null : ApplyCover(a);
     }
 
     /// <summary>递归枚举目录下全部图片（含所有嵌套子目录），跳过无权限/损坏目录。</summary>

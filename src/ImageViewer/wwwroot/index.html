@@ -13,7 +13,7 @@
   <div id="winTitlebar">
     <span class="win-logo">🖼️</span>
     <span class="win-title">Hoping Image Viewer</span><span class="win-version" id="winVersion"></span>
-    <span class="win-subtitle" id="winSubtitle">本地图片浏览</span>
+    <span class="win-subtitle" id="winSubtitle">本地图片浏览</span><span id="updateChip" class="update-chip hidden"></span>
     <div class="spacer"></div>
     <div class="win-controls">
       <button class="win-btn" id="winMinBtn" title="最小化">─</button>
@@ -24,25 +24,26 @@
 
   <!-- 顶部工具栏 -->
   <header class="toolbar">
-    <button id="btnHome" class="tool-btn" title="回到首页（我的相册）">🏠 首页</button>
-    <button id="btnBack" class="tool-btn" title="上一级目录">⬆ 上级</button>
-    <button id="btnTags" class="tool-btn" title="标签管理（新建/筛选）">🏷 标签</button>
-    <button id="btnAddFolder" class="tool-btn" title="浏览并添加相册文件夹（直接链接，不复制文件）">📁 添加文件夹</button>
+    <button id="btnHome" class="tool-btn" data-i18n-title="回到首页（我的相册）">🏠 <span data-i18n="首页">首页</span></button>
+    <button id="btnBack" class="tool-btn" data-i18n-title="上一级目录">⬆ <span data-i18n="上级">上级</span></button>
+    <button id="btnTags" class="tool-btn" data-i18n-title="标签管理（新建/筛选）">🏷 <span data-i18n="标签">标签</span></button>
+    <button id="btnAddFolder" class="tool-btn" data-i18n-title="浏览并添加相册文件夹（直接链接，不复制文件）">📁 <span data-i18n="添加文件夹">添加文件夹</span></button>
     <div class="spacer"></div>
     <div class="view-toggle" id="viewToggle">
-      <button id="btnBatch" class="tool-btn" title="一键识别相册全部图片（识别后先核对，可修改，确定才写入标签）">⚡ 一键识别</button>
-      <select id="sortSelect" class="sort-select" title="图片排序方式（每个相册单独记忆）">
-        <option value="name">按名称</option>
-        <option value="type">按类型</option>
-        <option value="modified">按修改时间</option>
-        <option value="created">按创建时间</option>
-        <option value="size">按大小</option>
+      <button id="btnBatch" class="tool-btn" data-i18n-title="一键识别相册全部图片（识别后先核对，可修改，确定才写入标签）">⚡ <span data-i18n="一键识别">一键识别</span></button>
+      <select id="sortSelect" class="sort-select" data-i18n-title="图片排序方式（每个相册单独记忆）">
+        <option value="name" data-i18n="按名称">按名称</option>
+        <option value="type" data-i18n="按类型">按类型</option>
+        <option value="modified" data-i18n="按修改时间">按修改时间</option>
+        <option value="created" data-i18n="按创建时间">按创建时间</option>
+        <option value="size" data-i18n="按大小">按大小</option>
       </select>
-      <button id="sortOrderBtn" class="tool-btn" title="切换升序/降序">↑</button>
-      <button id="viewAlbum" class="active" title="平铺视图">🗂 平铺</button>
-      <button id="viewList" title="列表视图">☰ 列表</button>
+      <button id="sortOrderBtn" class="tool-btn" data-i18n-title="切换升序/降序">↑</button>
+      <button id="viewAlbum" class="active" data-i18n-title="平铺视图">🗂 <span data-i18n="平铺">平铺</span></button>
+      <button id="viewList" data-i18n-title="列表视图">☰ <span data-i18n="列表">列表</span></button>
     </div>
-    <button id="btnSettings" class="tool-btn" title="设置（文件关联等）">⚙️</button>
+    <button id="btnTheme" class="tool-btn" data-i18n-title="切换主题（浅色 / 深色）">🌙</button>
+    <button id="btnSettings" class="tool-btn" data-i18n-title="设置（文件关联等）">⚙️</button>
   </header>
 
   <!-- 主内容：相册 / 列表 -->
@@ -50,15 +51,15 @@
 
   <!-- 拖入图片提示遮罩 -->
   <div id="dropOverlay" class="drop-overlay hidden">
-    <div class="drop-box">🖼️ 松开以查看图片</div>
+    <div class="drop-box">🖼️ <span data-i18n="松开以查看图片">松开以查看图片</span></div>
   </div>
 
   <!-- 右键菜单（图片上右键：打开 / 识别角色 / 添加标签 ▸ / 复制路径） -->
   <div id="ctxMenu" class="ctx-menu hidden">
-    <div class="ctx-item" data-act="open">🖼️ 打开图片</div>
-    <div class="ctx-item" data-act="recognize">🔍 识别角色</div>
-    <div class="ctx-item ctx-has-sub" data-act="tag">🏷 添加标签 <span class="ctx-arrow">▸</span></div>
-    <div class="ctx-item" data-act="copy">📋 复制路径</div>
+    <div class="ctx-item" data-act="open"><span class="ctx-ico">🖼️</span><span class="ctx-text" data-i18n="打开图片">打开图片</span></div>
+    <div class="ctx-item" data-act="recognize"><span class="ctx-ico">🔍</span><span class="ctx-text" data-i18n="识别角色">识别角色</span></div>
+    <div class="ctx-item ctx-has-sub" data-act="tag"><span class="ctx-ico">🏷</span><span class="ctx-text" data-i18n="添加标签">添加标签</span><span class="ctx-arrow">▸</span></div>
+    <div class="ctx-item" data-act="copy"><span class="ctx-ico">📋</span><span class="ctx-text" data-i18n="复制路径">复制路径</span></div>
   </div>
   <div id="ctxSubmenu" class="ctx-submenu hidden"></div>
 
@@ -69,8 +70,8 @@
       <div class="modal-message" id="modalMessage"></div>
       <input id="modalInput" class="modal-input" type="text" spellcheck="false" autocomplete="off" style="display:none">
       <div class="modal-buttons">
-        <button id="modalCancelBtn" class="tool-btn" style="display:none">取消</button>
-        <button id="modalOkBtn" class="tool-btn modal-ok">确定</button>
+        <button id="modalCancelBtn" class="tool-btn" style="display:none" data-i18n="取消">取消</button>
+        <button id="modalOkBtn" class="tool-btn modal-ok" data-i18n="确定">确定</button>
       </div>
     </div>
   </div>
@@ -79,45 +80,43 @@
   <div id="viewer" class="viewer hidden">
     <div class="viewer-topbar">
       <span id="viewerTitle" class="viewer-title"></span>
-      <button id="viewerClose" class="viewer-close" title="关闭 (Esc)">✕</button>
+      <button id="viewerClose" class="viewer-close" data-i18n-title="关闭 (Esc)">✕</button>
     </div>
 
     <div id="viewerStage" class="viewer-stage">
       <img id="viewerImg" alt="" draggable="false">
     </div>
 
-    <button id="prevBtn" class="nav-btn prev" title="上一张 (←)">◀</button>
-    <button id="nextBtn" class="nav-btn next" title="下一张 (→)">▶</button>
+    <button id="prevBtn" class="nav-btn prev" data-i18n-title="上一张 (←)">◀</button>
+    <button id="nextBtn" class="nav-btn next" data-i18n-title="下一张 (→)">▶</button>
 
     <div class="viewer-controls">
-      <button id="btnZoomOut" title="缩小">−</button>
+      <button id="btnZoomOut" data-i18n-title="缩小">−</button>
       <span id="zoomLabel" class="zoom-label">100%</span>
-      <button id="btnZoomIn" title="放大">＋</button>
-      <button id="btnFit" title="适应窗口">⤢</button>
-      <button id="btnActual" title="实际大小 (1:1)">1:1</button>
+      <button id="btnZoomIn" data-i18n-title="放大">＋</button>
+      <button id="btnFit" data-i18n-title="适应窗口">⤢</button>
+      <button id="btnActual" data-i18n-title="实际大小 (1:1)">1:1</button>
       <span class="sep"></span>
-      <button id="btnRotateL" title="左旋 90°">↺</button>
-      <button id="btnRotateR" title="右旋 90°">↻</button>
-      <button id="btnReset" title="旋转复位 (0°)">⟲</button>
+      <button id="btnRotateL" data-i18n-title="左旋 90°">↺</button>
+      <button id="btnRotateR" data-i18n-title="右旋 90°">↻</button>
+      <button id="btnReset" data-i18n-title="旋转复位 (0°)">⟲</button>
       <span class="sep"></span>
-      <button id="btnRecognize" title="识别图中角色">🔍 识别</button>
-      <button id="btnExport" title="保存旋转后的图片">💾 保存</button>
+      <button id="btnRecognize" data-i18n-title="识别图中角色">🔍 <span data-i18n="识别角色">识别</span></button>
+      <button id="btnExport" data-i18n-title="保存旋转后的图片">💾 <span data-i18n="保存">保存</span></button>
+      <button id="btnEdit" data-i18n-title="在系统默认图片编辑器中打开当前图片">✏️ <span data-i18n="编辑">编辑</span></button>
+      <button id="btnBg" data-i18n-title="切换背景（灰 / 白 / 黑）">🎨 <span data-i18n="背景">背景</span></button>
     </div>
   </div>
 
   <!-- 角色识别面板（对接用户配置的模型 API 识别图中角色，可一键把角色加为标签） -->
   <div id="aiModal" class="modal-overlay hidden">
     <div class="modal-box ai-box">
-      <div class="modal-title">🔍 识别角色</div>
-      <div class="ai-api-row">
-        <input id="aiUrlInput" class="ai-url-input" type="text" spellcheck="false" autocomplete="off" placeholder="角色识别 API 地址，如 http://localhost:5210">
-        <button id="aiSaveUrlBtn" class="tool-btn" title="保存 API 地址">保存</button>
-      </div>
+      <div class="modal-title">🔍 <span data-i18n="识别角色">识别角色</span></div>
       <div class="ai-file" id="aiFile"></div>
       <div id="aiResults" class="ai-results"></div>
       <div class="modal-buttons">
-        <button id="aiReRunBtn" class="tool-btn" title="用当前图片重新识别">重新识别</button>
-        <button id="aiCloseBtn" class="tool-btn modal-ok">关闭</button>
+        <button id="aiReRunBtn" class="tool-btn" data-i18n-title="用当前图片重新识别" data-i18n="重新识别">重新识别</button>
+        <button id="aiCloseBtn" class="tool-btn modal-ok" data-i18n="关闭">关闭</button>
       </div>
     </div>
   </div>
@@ -125,13 +124,13 @@
   <!-- 一键识别相册进度 -->
   <div id="batchProgress" class="modal-overlay hidden">
     <div class="modal-box bp-box">
-      <div class="modal-title">⚡ 一键识别</div>
+      <div class="modal-title">⚡ <span data-i18n="一键识别">一键识别</span></div>
       <div class="bp-progress"><div id="bpBar" class="bp-bar"></div></div>
       <div class="bp-count" id="bpCount">0 / 0</div>
-      <div class="bp-file" id="bpFile">正在识别…</div>
+      <div class="bp-file" id="bpFile" data-i18n="正在识别…">正在识别…</div>
       <div class="bp-path" id="bpPath"></div>
       <div class="modal-buttons">
-        <button id="bpCancelBtn" class="tool-btn">取消</button>
+        <button id="bpCancelBtn" class="tool-btn" data-i18n="取消">取消</button>
       </div>
     </div>
   </div>
@@ -139,13 +138,13 @@
   <!-- 一键识别结果预览（核对、修改标签；点「确定写入」才保存） -->
   <div id="batchReview" class="modal-overlay hidden">
     <div class="modal-box review-box">
-      <div class="modal-title">⚡ 识别结果预览</div>
+      <div class="modal-title">⚡ <span data-i18n="识别结果预览">识别结果预览</span></div>
       <div class="review-hint" id="brHint"></div>
       <div class="br-tags" id="brTags"></div>
       <div class="br-grid" id="brGrid"></div>
       <div class="modal-buttons">
-        <button id="brCancelBtn" class="tool-btn">取消</button>
-        <button id="brOkBtn" class="tool-btn modal-ok">确定写入</button>
+        <button id="brCancelBtn" class="tool-btn" data-i18n="取消">取消</button>
+        <button id="brOkBtn" class="tool-btn modal-ok" data-i18n="确定写入">确定写入</button>
       </div>
     </div>
   </div>
@@ -153,35 +152,150 @@
   <!-- 预览中修改单张图片标签 -->
   <div id="brEdit" class="modal-overlay hidden">
     <div class="modal-box br-edit-box">
-      <div class="modal-title">修改标签</div>
+      <div class="modal-title" data-i18n="修改标签">修改标签</div>
       <div class="br-edit-name" id="brEditName"></div>
       <div class="br-edit-path" id="brEditPath"></div>
       <div class="br-edit-row">
         <select id="brEditSelect" class="br-edit-select"></select>
-        <input id="brEditInput" class="br-edit-input" type="text" spellcheck="false" autocomplete="off" placeholder="或输入新标签名">
+        <input id="brEditInput" class="br-edit-input" type="text" spellcheck="false" autocomplete="off" data-i18n-placeholder="或输入新标签名">
       </div>
       <div class="modal-buttons">
-        <button id="brEditCancelBtn" class="tool-btn">取消</button>
-        <button id="brEditOkBtn" class="tool-btn modal-ok">确定</button>
+        <button id="brEditCancelBtn" class="tool-btn" data-i18n="取消">取消</button>
+        <button id="brEditOkBtn" class="tool-btn modal-ok" data-i18n="确定">确定</button>
       </div>
     </div>
   </div>
 
-  <!-- 设置：文件关联（勾选格式 → 应用 → 双击图片即用本软件打开） -->
+  <!-- 更换相册封面：在该相册的图片中选一张 -->
+  <div id="coverModal" class="modal-overlay hidden">
+    <div class="modal-box cover-box">
+      <div class="modal-title">🖼️ <span data-i18n="更换封面">更换封面</span></div>
+      <div class="cover-name" id="coverName"></div>
+      <div class="cover-grid" id="coverGrid"></div>
+      <div class="modal-buttons">
+        <button id="coverCancelBtn" class="tool-btn" data-i18n="取消">取消</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 设置：左侧板块列表，右侧该板块设置内容 -->
   <div id="settingsModal" class="modal-overlay hidden">
     <div class="modal-box settings-box">
-      <div class="modal-title">⚙️ 设置</div>
-      <div class="settings-section-title">📂 文件关联</div>
-      <div class="settings-hint">勾选格式后点「应用」：图片会加入本软件的「打开方式」。
-        <br>要设为双击默认打开：右键任意图片 → 打开方式 → Hoping Image Viewer → 勾选「始终使用此应用」。</div>
-      <div id="assocList" class="assoc-list"></div>
+      <div class="modal-title">⚙️ <span data-i18n="设置">设置</span></div>
+      <div class="settings-body">
+        <div class="settings-nav">
+          <button class="settings-nav-item active" data-panel="fastviewer">⚡ <span data-i18n="极速查看器">极速查看器</span></button>
+          <button class="settings-nav-item" data-panel="viewer">🖼️ <span data-i18n="查看器">查看器</span></button>
+          <button class="settings-nav-item" data-panel="tray">🖥️ <span data-i18n="系统托盘">系统托盘</span></button>
+          <button class="settings-nav-item" data-panel="ai">🔍 <span data-i18n="识别功能">识别功能</span></button>
+          <button class="settings-nav-item" data-panel="editor">✏️ <span data-i18n="图片编辑">图片编辑</span></button>
+          <button class="settings-nav-item" data-panel="assoc">📂 <span data-i18n="文件关联">文件关联</span></button>
+          <button class="settings-nav-item" data-panel="lang">🌐 <span data-i18n="语言">语言</span></button>
+          <button class="settings-nav-item" data-panel="about">ℹ️ <span data-i18n="关于">关于</span></button>
+        </div>
+        <div class="settings-content">
+          <div class="settings-panel" id="panel-lang">
+            <div class="settings-section-title">🌐 <span data-i18n="语言">语言</span></div>
+            <button id="langBtn" class="tool-btn lang-btn">🌐 <span>跟随系统 / Auto</span></button>
+            <div class="settings-hint" data-i18n="选择界面语言。「跟随系统」按 Windows 显示语言自动匹配，未匹配则回退简体中文。">选择界面语言。「跟随系统」按 Windows 显示语言自动匹配，未匹配则回退简体中文。</div>
+          </div>
+          <div class="settings-panel hidden" id="panel-viewer">
+            <div class="settings-section-title">🖼️ <span data-i18n="查看器">查看器</span></div>
+            <label class="assoc-row">
+              <input type="checkbox" id="rccCb">
+              <span data-i18n="右键点击查看器直接关闭">右键点击查看器直接关闭</span>
+            </label>
+            <div class="settings-hint" data-i18n="开启后，查看图片时点右键立即关闭查看器；关闭此开关后，右键可继续拖拽平移图片。">开启后，查看图片时点右键立即关闭查看器；关闭此开关后，右键可继续拖拽平移图片。</div>
+          </div>
+          <div class="settings-panel hidden" id="panel-fastviewer">
+            <div class="settings-section-title">⚡ <span data-i18n="极速查看器">极速查看器</span> <span class="chip-beta">Beta</span></div>
+            <label class="assoc-row">
+              <input type="checkbox" id="fastViewerCb">
+              <span data-i18n="双击关联图片直接打开极速查看器（秒开，不加载主界面）">双击关联图片直接打开极速查看器（秒开，不加载主界面）</span>
+            </label>
+            <div class="settings-hint" data-i18n="开启后，双击被关联的图片格式立即进入原生极速查看器（仅旋转 / 缩放 / 平移）。点「回到相册」才加载主界面。">开启后，双击被关联的图片格式立即进入原生极速查看器（仅旋转 / 缩放 / 平移）。点「回到相册」才加载主界面。</div>
+          </div>
+          <div class="settings-panel hidden" id="panel-tray">
+            <div class="settings-section-title">🖥️ <span data-i18n="系统托盘">系统托盘</span></div>
+            <div class="settings-hint" data-i18n="选择点「关闭」时主界面的行为：">选择点「关闭」时主界面的行为：</div>
+            <label class="assoc-row">
+              <input type="radio" name="closeMode" value="tray">
+              <span data-i18n="最小化到托盘（程序驻留后台，托盘图标可恢复 / 退出）">最小化到托盘（程序驻留后台，托盘图标可恢复 / 退出）</span>
+            </label>
+            <label class="assoc-row">
+              <input type="radio" name="closeMode" value="exit">
+              <span data-i18n="退出程序">退出程序</span>
+            </label>
+          </div>
+          <div class="settings-panel hidden" id="panel-ai">
+            <div class="settings-section-title">🔍 <span data-i18n="识别功能">识别功能</span></div>
+            <label class="assoc-row">
+              <input type="checkbox" id="aiEnabledCb">
+              <span data-i18n="启用角色识别功能">启用角色识别功能</span>
+            </label>
+            <div class="settings-hint" data-i18n="关闭后隐藏右键菜单的「识别角色」、工具栏的「一键识别」和查看器的「识别」按钮，识别相关功能不可用。">关闭后隐藏右键菜单的「识别角色」、工具栏的「一键识别」和查看器的「识别」按钮，识别相关功能不可用。</div>
+            <div class="ai-api-row" style="margin-top:10px">
+              <input id="aiUrlCfgInput" class="ai-url-input" type="text" spellcheck="false" autocomplete="off" data-i18n-placeholder="角色识别 API 地址，如 http://localhost:5210">
+            </div>
+            <div class="settings-hint" data-i18n="角色识别 API 地址：右键「识别角色」和「一键识别」用它识别图片中的角色。点「应用」保存。">角色识别 API 地址：右键「识别角色」和「一键识别」用它识别图片中的角色。点「应用」保存。</div>
+          </div>
+          <div class="settings-panel hidden" id="panel-editor">
+            <div class="settings-section-title">✏️ <span data-i18n="图片编辑">图片编辑</span></div>
+            <div class="settings-hint" data-i18n="查看器「✏️ 编辑」按钮用哪个软件打开当前图片。留空自动使用画图（mspaint）/ Paint.NET。">查看器「✏️ 编辑」按钮用哪个软件打开当前图片。留空自动使用画图（mspaint）/ Paint.NET。</div>
+            <div class="ai-api-row">
+              <input id="editorPathInput" class="ai-url-input" type="text" spellcheck="false" autocomplete="off" data-i18n-placeholder="图片编辑器 exe 路径，如 C:\Program Files\Paint.NET\paintdotnet.exe">
+              <button id="editorBrowseBtn" class="tool-btn" data-i18n-title="浏览选择图片编辑器 exe" data-i18n="浏览">浏览</button>
+            </div>
+            <div class="settings-hint" data-i18n="若系统没有画图（如精简版 Windows），请在此填写你常用的图片编辑软件路径，点「应用」保存，编辑按钮将用它打开。">若系统没有画图（如精简版 Windows），请在此填写你常用的图片编辑软件路径，点「应用」保存，编辑按钮将用它打开。</div>
+          </div>
+          <div class="settings-panel hidden" id="panel-assoc">
+            <div class="settings-section-title">📂 <span data-i18n="文件关联">文件关联</span></div>
+            <div class="settings-hint" data-i18n="勾选格式后点「应用」：图片会加入本软件的「打开方式」。要设为双击默认打开：右键任意图片 → 打开方式 → Hoping Image Viewer → 勾选「始终使用此应用」。">勾选格式后点「应用」：图片会加入本软件的「打开方式」。要设为双击默认打开：右键任意图片 → 打开方式 → Hoping Image Viewer → 勾选「始终使用此应用」。</div>
+            <div id="assocList" class="assoc-list"></div>
+          </div>
+          <div class="settings-panel hidden" id="panel-about">
+            <div class="settings-section-title">ℹ️ <span data-i18n="关于">关于</span></div>
+            <div class="about-name">Hoping Image Viewer</div>
+            <div class="about-version" id="aboutVersion"><span data-i18n="版本">版本</span>：…</div>
+            <div class="about-desc" data-i18n="本地图片查看器：相册 / 列表视图、缩放旋转平移、标签管理、角色识别、极速查看器，便携免安装。">本地图片查看器：相册 / 列表视图、缩放旋转平移、标签管理、角色识别、极速查看器，便携免安装。</div>
+            <div class="about-copy">© 2026 HopingStar · <span data-i18n="版权所有">版权所有</span> MIT</div>
+            <label class="assoc-row">
+              <input type="checkbox" id="updateCheckCb">
+              <span data-i18n="启用更新检查（启动时自动检测新版本）">启用更新检查（启动时自动检测新版本）</span>
+            </label>
+            <div class="settings-hint" data-i18n="关闭后不自动检查更新，也不在标题栏显示更新提示。">关闭后不自动检查更新，也不在标题栏显示更新提示。</div>
+            <label class="assoc-row" style="margin-top:8px">
+              <input type="checkbox" id="showDetailCb">
+              <span data-i18n="显示详细错误信息（含底层技术详情，便于排查）">显示详细错误信息（含底层技术详情，便于排查）</span>
+            </label>
+            <div class="settings-hint" data-i18n="开启后，错误提示会附带系统底层异常详情（通常为英文）；默认关闭，普通用户无需开启。">开启后，错误提示会附带系统底层异常详情（通常为英文）；默认关闭，普通用户无需开启。</div>
+            <div class="about-buttons">
+              <button id="aboutGithubBtn" class="tool-btn" data-i18n="打开 GitHub 项目">🌐 打开 GitHub 项目</button>
+              <button id="aboutUpdateBtn" class="tool-btn" data-i18n="检查更新">🔄 检查更新</button>
+            </div>
+            <div class="about-update-result" id="aboutUpdateResult"></div>
+          </div>
+        </div>
+      </div>
       <div class="modal-buttons">
-        <button id="settingsCloseBtn" class="tool-btn">关闭</button>
-        <button id="assocApplyBtn" class="tool-btn modal-ok">应用</button>
+        <button id="settingsCloseBtn" class="tool-btn" data-i18n="关闭">关闭</button>
+        <button id="assocApplyBtn" class="tool-btn modal-ok" data-i18n="应用">应用</button>
       </div>
     </div>
   </div>
 
+  <!-- 语言选择模态（点击设置里「语言」按钮弹出，每项带国旗） -->
+  <div id="langModal" class="modal-overlay hidden">
+    <div class="modal-box lang-box">
+      <div class="modal-title">🌐 <span data-i18n="选择语言">选择语言</span></div>
+      <div id="langList" class="lang-list"></div>
+    </div>
+  </div>
+
+  <!-- 加载动画（目录/相册加载时显示） -->
+  <div id="loading" class="loading hidden"><div class="spinner"></div></div>
+
+  <script src="js/i18n.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>

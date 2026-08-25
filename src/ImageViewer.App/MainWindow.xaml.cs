@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.IO;
 using System.Net;
 using System.Windows;
@@ -25,6 +26,7 @@ public partial class MainWindow : Window
     private readonly string[] _startArgs;
     private readonly WindowControlBridge _bridge;
     private TrayIcon? _tray;
+    private bool _forceExit;   // 托盘「退出」：真正关闭窗口并结束进程（绕过关闭模式拦截）
 
     public MainWindow(string[] startArgs)
     {
@@ -32,20 +34,61 @@ public partial class MainWindow : Window
         _startArgs = startArgs;
         _bridge = new WindowControlBridge(this);
         SetWindowIcon();
-        // 常驻系统托盘：关闭窗口只隐藏（不退出进程），托盘右键「退出」才真正结束
+        // 系统托盘：关闭主界面时按设置最小化到托盘（进程驻留）或退出程序；托盘「退出」才真正结束进程
         _tray = new TrayIcon(this);
         Closed += (_, _) =>
         {
             _tray?.Dispose();
             _tray = null;
             try { _host?.Stop(); } catch { }
+            // 走到这里窗口必然真正关闭（驻留托盘模式下关闭被 OnClosing 拦截隐藏，不会触发 Closed）→ 结束进程
+            System.Windows.Application.Current.Shutdown();
         };
         Loaded += async (_, _) =>
         {
             // 全屏时隐藏边缘缩放热区并禁用缩放；退出全屏时恢复（含拖动标题栏自动退出全屏）
             WindowChromeService.FullscreenChanged += ApplyFullscreenState;
+            // 任务栏进度：前端通过 HTTP（/api/taskbar-progress）异步上报，这里注册回调设置到任务栏进度条
+            // （不用 WebView2 bridge 高频调用——跨进程调用会阻塞 JS 主线程导致一键识别循环卡死）
+            TaskbarProgress.Register((value, state) => Dispatcher.BeginInvoke(() =>
+            {
+                try
+                {
+                    TaskbarItemInfo.ProgressValue = value;
+                    TaskbarItemInfo.ProgressState = state switch
+                    {
+                        1 => TaskbarItemProgressState.Normal,
+                        2 => TaskbarItemProgressState.Indeterminate,
+                        3 => TaskbarItemProgressState.Error,
+                        4 => TaskbarItemProgressState.Paused,
+                        _ => TaskbarItemProgressState.None,
+                    };
+                }
+                catch { }
+            }));
             await StartAsync();
         };
+    }
+
+    /// <summary>关闭主界面：按设置决定——最小化到托盘（进程驻留，托盘可恢复）或真正关闭退出程序。
+    /// 前端标题栏关闭按钮（chromeHost.close → Close）与系统关闭都走这里。</summary>
+    protected override void OnClosing(CancelEventArgs e)
+    {
+        base.OnClosing(e);
+        if (_forceExit) return;   // 托盘「退出」：不拦截，真正关闭并退出
+        if (new SettingsStore().GetCloseToTray())
+        {
+            e.Cancel = true;
+            Hide();               // 最小化到系统托盘（进程驻留，WebView2/Kestrel 不销毁，托盘可恢复）
+        }
+        // 关闭模式=退出程序：允许关闭，Closed 事件里 Shutdown 结束进程
+    }
+
+    /// <summary>托盘「退出」：设置强制退出标志后关闭窗口，绕过关闭模式拦截，真正结束进程。</summary>
+    public void RequestExit()
+    {
+        _forceExit = true;
+        Close();
     }
 
     /// <summary>外部（单实例转发）请求打开图片：恢复窗口（托盘隐藏/最小化）置前并闪烁，主动通知前端显示图片。

@@ -12,10 +12,18 @@
              顶部不留边（标题栏贴顶）；窗口四边用与页面背景完全一致的 #1b1e24 + 3px 极窄边，视觉上几乎不可见 -->
         <WindowChrome CaptionHeight="0" ResizeBorderThickness="3" GlassFrameThickness="0" CornerRadius="0" UseAeroCaptionButtons="False" />
     </WindowChrome.WindowChrome>
+    <!-- 任务栏进度条（一键识别等批量任务，前端通过 chromeHost.set_taskbar_progress 更新） -->
+    <Window.TaskbarItemInfo>
+        <TaskbarItemInfo ProgressState="None" ProgressValue="0" />
+    </Window.TaskbarItemInfo>
     <Grid Background="#1b1e24">
-        <!-- 启动占位：WebView2 初始化前先显示，随后被页面覆盖 -->
-        <TextBlock x:Name="bootHint" Text="🖼️ 正在启动…" HorizontalAlignment="Center"
-                   VerticalAlignment="Center" Foreground="#77808a" FontSize="14" />
+        <!-- 启动占位：WebView2 初始化前先显示，随后被页面覆盖。含加载动画进度条 + 提示文字 -->
+        <StackPanel x:Name="bootHint" HorizontalAlignment="Center" VerticalAlignment="Center">
+            <ProgressBar Width="120" Height="4" IsIndeterminate="True"
+                         Foreground="#a855f7" Background="#3a4250" />
+            <TextBlock Text="正在启动…" HorizontalAlignment="Center" Margin="0,10,0,0"
+                       Foreground="#77808a" FontSize="13" />
+        </StackPanel>
         <!-- WebView2 内缩 3px 露出边缘缩放热区（左/右/下）；顶部贴窗边 -->
         <wv2:WebView2 x:Name="webView" Margin="0,3,3,3" DefaultBackgroundColor="#1b1e24" />
     </Grid>
