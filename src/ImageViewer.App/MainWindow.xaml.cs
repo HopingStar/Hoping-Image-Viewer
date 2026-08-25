@@ -3,6 +3,7 @@ using System.Net;
 using System.Windows;
 using System.Windows.Interop;
 using System.Windows.Media.Imaging;
+using System.Windows.Shell;
 using ImageViewer.App;
 using ImageViewer.App.Bridge;
 using ImageViewer.App.Hosting;
@@ -39,7 +40,12 @@ public partial class MainWindow : Window
             _tray = null;
             try { _host?.Stop(); } catch { }
         };
-        Loaded += async (_, _) => await StartAsync();
+        Loaded += async (_, _) =>
+        {
+            // 全屏时隐藏边缘缩放热区并禁用缩放；退出全屏时恢复（含拖动标题栏自动退出全屏）
+            WindowChromeService.FullscreenChanged += ApplyFullscreenState;
+            await StartAsync();
+        };
     }
 
     /// <summary>外部（单实例转发）请求打开图片：恢复窗口（托盘隐藏/最小化）置前并闪烁，主动通知前端显示图片。
@@ -63,6 +69,20 @@ public partial class MainWindow : Window
                     "window.hivOpenPendingPhoto(" + System.Text.Json.JsonSerializer.Serialize(path) + ");");
         }
         catch { }
+    }
+
+    /// <summary>全屏（工作区最大化，不遮任务栏）时：隐藏窗口边缘 6px 缩放热区（WebView2 铺满整个窗口）
+    /// 并禁止缩放窗口；退出全屏时恢复 6px 边缘与可缩放状态。拖动标题栏退出全屏同样会触发。
+    /// 用 WindowChrome 的 ResizeBorderThickness 归零 + ResizeMode=NoResize 双保险确保全屏不可缩放。</summary>
+    private void ApplyFullscreenState(bool fullscreen)
+    {
+        // WindowChrome 缩放热区：全屏归零（页面铺满），普通状态 3px
+        if (WindowChrome.GetWindowChrome(this) is { } chrome)
+            chrome.ResizeBorderThickness = fullscreen ? new Thickness(0) : new Thickness(3);
+        // 全屏禁止缩放（阻止边缘缩放热区生效）
+        ResizeMode = fullscreen ? ResizeMode.NoResize : ResizeMode.CanResize;
+        // WebView2 边距：全屏铺满整个窗口（隐藏边缘），普通状态左右/下内缩 3px 露出缩放热区
+        webView.Margin = fullscreen ? new Thickness(0) : new Thickness(0, 3, 3, 3);
     }
 
     /// <summary>从程序集内嵌 Resource 加载窗口/任务栏图标（exe 旁不留 .ico 文件）。

@@ -37,6 +37,7 @@ public sealed class WindowControlBridge
         return r;
     }
 
+
     /// <summary>关闭按钮：不结束进程，仅隐藏窗口到系统托盘（托盘右键「退出」才真正结束）。</summary>
     public void close()
         => _window.Dispatcher.BeginInvoke(() => _window.Hide());

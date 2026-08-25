@@ -6,14 +6,17 @@
         Width="1280" Height="820" MinWidth="900" MinHeight="600"
         WindowStartupLocation="CenterScreen"
         WindowStyle="None" ResizeMode="CanResize"
-        Background="#0d0f13">
+        Background="#1b1e24">
     <WindowChrome.WindowChrome>
-        <WindowChrome CaptionHeight="0" ResizeBorderThickness="6" GlassFrameThickness="0" CornerRadius="0" UseAeroCaptionButtons="False" />
+        <!-- ResizeBorderThickness=3 + WebView2 左右/下内缩 3px：露出窗口边缘缩放热区（WindowChrome 原生缩放），
+             顶部不留边（标题栏贴顶）；窗口四边用与页面背景完全一致的 #1b1e24 + 3px 极窄边，视觉上几乎不可见 -->
+        <WindowChrome CaptionHeight="0" ResizeBorderThickness="3" GlassFrameThickness="0" CornerRadius="0" UseAeroCaptionButtons="False" />
     </WindowChrome.WindowChrome>
-    <Grid Background="#0d0f13">
+    <Grid Background="#1b1e24">
         <!-- 启动占位：WebView2 初始化前先显示，随后被页面覆盖 -->
         <TextBlock x:Name="bootHint" Text="🖼️ 正在启动…" HorizontalAlignment="Center"
                    VerticalAlignment="Center" Foreground="#77808a" FontSize="14" />
-        <wv2:WebView2 x:Name="webView" DefaultBackgroundColor="#0d0f13" />
+        <!-- WebView2 内缩 3px 露出边缘缩放热区（左/右/下）；顶部贴窗边 -->
+        <wv2:WebView2 x:Name="webView" Margin="0,3,3,3" DefaultBackgroundColor="#1b1e24" />
     </Grid>
 </Window>

@@ -16,6 +16,7 @@
     sortBy: 'name',           // 图片排序字段：name | modified | created | size
     sortOrder: 'asc',         // asc | desc
     inAlbum: false,           // true=正在看某个相册的图片页；false=相册页（只显示相册）
+    prevWasImage: false,      // 进入当前相册前，上一页是否为图片页（「上级」回到根的图片页还是相册页）
     tagPage: false,           // true=标签管理页
     filterTags: [],           // 标签页中选中的筛选标签（多选取交集）
     droppedUrl: null,         // 拖入图片的 blob URL
@@ -36,7 +37,6 @@
   // ==================== DOM 引用 ====================
   const $ = (id) => document.getElementById(id);
   const content = $('content');
-  const currentDir = $('currentDir');
   const viewer = $('viewer');
   const viewerImg = $('viewerImg');
   const viewerStage = $('viewerStage');
@@ -150,7 +150,6 @@
   }
 
   function render() {
-    currentDir.textContent = state.path;
     const st = $('winSubtitle');
     if (st) st.textContent = state.displayName || state.path;
     // 相册页（inAlbum=false）在根处禁用「上级」；图片页/标签页始终可「上级」
@@ -158,6 +157,8 @@
     content.innerHTML = '';
     disposeVg();
     cancelListChunk();
+    // 常驻路径条：无论相册根界面还是相册/子相册图片页，顶部始终显示当前目录完整路径
+    if (!state.tagPage) renderPathBar();
     if (state.tagPage) {
       // 标签管理页
       $('viewToggle').style.display = 'none';
@@ -173,8 +174,15 @@
       // 相册页：始终以相册（平铺卡片）显示，视图切换隐藏
       $('viewToggle').style.display = 'none';
       renderMyAlbums();
-      if (state.albums.length > 0) {
-        renderAlbumGrid(state.albums, '相册');
+      // 根目录已是「我的相册」里的已链接相册时：其子相册可在相册图片页的「子相册」区浏览，
+      // 这里不再重复列出（修复从子相册点「上级」回到相册根界面时，下方又出现子相册列表）；
+      // 非链接根（如默认目录）仍显示子相册网格，便于浏览
+      const rootIsLinked = state.linkedAlbums.some(
+        (l) => l.path.toLowerCase() === state.path.toLowerCase());
+      const subAlbums = rootIsLinked ? [] : state.albums.filter((a) =>
+        !state.linkedAlbums.some((l) => l.path.toLowerCase() === a.path.toLowerCase()));
+      if (subAlbums.length > 0) {
+        renderAlbumGrid(subAlbums, '相册');
       } else if (state.linkedAlbums.length === 0) {
         const empty = document.createElement('div');
         empty.className = 'empty-hint';
@@ -385,7 +393,11 @@
           '</div>' +
           `<div class="album-meta"><span class="name">${esc(a.name)}</span><span class="count">${a.count} 张</span></div>` +
           '<span class="album-remove" title="移除链接">✕</span>';
-        card.addEventListener('click', () => { state.root = a.path; load(a.path, true); });
+        card.addEventListener('click', () => {
+          state.prevWasImage = state.inAlbum;   // 记录进入前是否在图片页（「上级」据此回到图片页还是相册页）
+          state.root = a.path;
+          load(a.path, true);
+        });
         card.querySelector('.album-remove').addEventListener('click', (e) => {
           e.stopPropagation();
           removeAlbum(a.path);
@@ -397,16 +409,37 @@
     content.appendChild(section);
   }
 
+  /** 区块标题（路径已由顶部常驻路径条统一显示）。 */
+  function makeSectionHead(titleText) {
+    const title = document.createElement('div');
+    title.className = 'section-title';
+    title.textContent = titleText;
+    return title;
+  }
+
+  /** 常驻路径条：内容区顶部显示当前目录完整路径（完整显示换行，悬停可看全）。 */
+  function renderPathBar() {
+    const bar = document.createElement('div');
+    bar.className = 'page-path-bar';
+    const icon = document.createElement('span');
+    icon.className = 'page-path-icon';
+    icon.textContent = '📂';
+    const text = document.createElement('span');
+    text.className = 'page-path-text';
+    text.textContent = state.path || '（未选择目录）';
+    text.title = state.path || '';
+    bar.appendChild(icon);
+    bar.appendChild(text);
+    content.appendChild(bar);
+  }
+
   /** 平铺视图（仅在图片页使用）：子相册(可继续下钻) + 该相册图片。 */
   function renderAlbum() {
     if (state.albums.length > 0) {
       renderAlbumGrid(state.albums, '子相册');
     }
     if (state.photos.length > 0) {
-      const title = document.createElement('div');
-      title.className = 'section-title';
-      title.textContent = '图片（' + state.photos.length + ' 张）';
-      content.appendChild(title);
+      content.appendChild(makeSectionHead('图片（' + state.photos.length + ' 张）'));
       renderPhotoGrid(state.photos);
     }
     if (state.photos.length === 0 && state.albums.length === 0) {
@@ -419,10 +452,7 @@
 
   /** 渲染相册卡片网格。点击卡片 → 进入该相册的图片页。 */
   function renderAlbumGrid(albums, sectionTitle) {
-    const title = document.createElement('div');
-    title.className = 'section-title';
-    title.textContent = sectionTitle;
-    content.appendChild(title);
+    content.appendChild(makeSectionHead(sectionTitle));
     const grid = document.createElement('div');
     grid.className = 'album-grid';
     for (const a of albums) {
@@ -434,7 +464,10 @@
         (a.cover_thumb_url ? `<img src="${a.cover_thumb_url}" loading="lazy" alt="">` : '') +
         '</div>' +
         `<div class="album-meta"><span class="name">${esc(a.name)}</span><span class="count">${a.count} 张</span></div>`;
-      card.addEventListener('click', () => load(a.path, true));
+      card.addEventListener('click', () => {
+        state.prevWasImage = state.inAlbum;   // 记录进入前是否在图片页（「上级」据此回到图片页还是相册页）
+        load(a.path, true);
+      });
       grid.appendChild(card);
     }
     content.appendChild(grid);
@@ -874,8 +907,14 @@
     $('winMinBtn').addEventListener('click', () => { try { getChrome().minimize(); } catch { } });
     $('winMaxBtn').addEventListener('click', toggleMaximize);
     $('winCloseBtn').addEventListener('click', () => { try { getChrome().close(); } catch { } });
-    // 初始同步最大化按钮图标
+    // 初始同步全屏按钮图标
     try { Promise.resolve(getChrome().is_maximized()).then(setMaxIcon).catch(() => { }); } catch { }
+    // 拖动退出全屏等场景桥接无法主动通知，轮询保持图标与全屏状态一致
+    setInterval(async () => {
+      const ch = getChrome();
+      if (!ch || !ch.is_maximized) return;
+      try { setMaxIcon(await Promise.resolve(ch.is_maximized())); } catch { }
+    }, 1000);
   }
 
   function toggleMaximize() {
@@ -884,10 +923,11 @@
     try { Promise.resolve(ch.toggle_maximize()).then(setMaxIcon).catch(() => { }); } catch { }
   }
 
+  /** 全屏按钮图标：非全屏 = □（进入全屏），全屏 = ❐（退出全屏）。用系统字体可靠的符号，避免冷门字符渲染成豆腐块。 */
   function setMaxIcon(isMax) {
     const btn = $('winMaxBtn');
     btn.textContent = isMax ? '❐' : '□';
-    btn.title = isMax ? '还原' : '最大化';
+    btn.title = isMax ? '退出全屏' : '全屏';
   }
 
   // ==================== 右键菜单（图片标签） ====================
@@ -1450,16 +1490,24 @@
     $('btnHome').addEventListener('click', goHome);
     $('btnTags').addEventListener('click', openTagPage);
     $('btnAddFolder').addEventListener('click', addFolder);
-    $('btnBack').addEventListener('click', () => {
+    $('btnBack').addEventListener('click', async () => {
       // 标签页：退出回上一页
       if (state.tagPage) { state.tagPage = false; render(); return; }
       // 已在相册根：图片页 → 回相册页；相册页根处按钮已禁用
       if (state.path === state.root) {
-        if (state.inAlbum) load(state.root, false);
+        if (state.inAlbum) { await loadAlbums(); load(state.root, false); }
         return;
       }
-      // 图片页回上一级；到相册根则切换回相册页
-      if (state.parent) load(state.parent, state.parent === state.root ? false : true);
+      // 图片页回上一级；到相册根：进入该相册前若正处于根的图片页 → 回到根的图片页，
+      // 否则回相册页（并刷新「我的相册」列表）——修复「上级」后相册在下方重复显示的问题
+      if (state.parent) {
+        if (state.parent === state.root) {
+          if (state.prevWasImage) load(state.root, true);
+          else { await loadAlbums(); load(state.root, false); }
+        } else {
+          load(state.parent, true);
+        }
+      }
     });
     $('viewAlbum').addEventListener('click', () => { state.view = 'album'; syncViewToggle(); render(); });
     $('viewList').addEventListener('click', () => { state.view = 'list'; syncViewToggle(); render(); });

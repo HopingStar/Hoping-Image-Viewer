@@ -92,9 +92,13 @@ public static class AppHost
             }
         });
 
-        // 静态前端（wwwroot/）
+        // 静态前端（wwwroot/）：本地宿主不缓存静态文件，重启后始终加载最新前端（避免 WebView2 缓存旧 JS/CSS）
         app.UseDefaultFiles();
-        app.UseStaticFiles();
+        app.UseStaticFiles(new StaticFileOptions
+        {
+            OnPrepareResponse = ctx =>
+                ctx.Context.Response.Headers.CacheControl = "no-cache",
+        });
 
         var api = app.MapGroup("/api");
 
@@ -108,6 +112,7 @@ public static class AppHost
             AppHost.PendingOpenPath = null;
             return Results.Ok(new { path = p });
         });
+
 
         // 列目录：返回当前目录的直接图片 + 子文件夹相册。path 缺省 = 默认图片目录；root 为相册根（根处 is_root，前端不可再回退）。
         api.MapGet("/photos", (ImageService svc, [FromQuery] string? path, [FromQuery] string? root) =>
@@ -160,13 +165,16 @@ public static class AppHost
 
         // 添加相册文件夹链接：仅校验目录存在并写入持久化列表（不枚举图片，避免大目录阻塞）。
         // 相册信息（数量/封面）由前端随后 GET /api/albums 获取。
-        api.MapPost("/albums", (AlbumStore store, [FromBody] AddAlbumRequest req) =>
+        api.MapPost("/albums", (ImageService svc, AlbumStore store, [FromBody] AddAlbumRequest req) =>
         {
             if (string.IsNullOrWhiteSpace(req.Path))
                 return Results.BadRequest(new { error = "路径不能为空" });
             string abs;
             try { abs = Path.GetFullPath(req.Path); }
             catch { return Results.BadRequest(new { error = "路径无效" }); }
+            // 缩略图缓存文件夹是程序内部数据，不允许当作相册
+            if (svc.IsCachePath(abs))
+                return Results.BadRequest(new { error = "无法将缓存文件夹作为相册" });
             if (!Directory.Exists(abs))
                 return Results.BadRequest(new { error = $"文件夹不存在: {abs}" });
             store.Add(abs);

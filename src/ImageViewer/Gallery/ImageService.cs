@@ -5,11 +5,12 @@ using SixLabors.ImageSharp.Processing;
 
 namespace ImageViewer.Gallery;
 
-/// <summary>图片浏览服务：目录扫描、缩略图（内存缓存）、旋转导出、自然排序。</summary>
+/// <summary>图片浏览服务：目录扫描、缩略图（内存 + 加密磁盘缓存）、旋转导出、自然排序。</summary>
 public sealed class ImageService
 {
     private const int ThumbCacheLimit = 500;
     private readonly ConcurrentDictionary<string, byte[]> _thumbCache = new();
+    private readonly ThumbCache _thumbDisk = new();   // 磁盘缩略图缓存（AES 加密，程序同目录 .thumbcache/）
 
     /// <summary>默认图片目录（绝对路径）。</summary>
     public string Root { get; }
@@ -25,6 +26,9 @@ public sealed class ImageService
     public FolderListing Scan(string? path, string? root)
     {
         var abs = ResolvePath(path);
+        // 缩略图缓存文件夹是程序内部数据，不允许当作相册浏览
+        if (IsCachePath(abs))
+            throw new InvalidOperationException("无法将缓存文件夹作为相册");
         var currentRoot = string.IsNullOrWhiteSpace(root) ? Root : ResolvePath(root);
         var isRoot = string.Equals(abs, currentRoot, StringComparison.OrdinalIgnoreCase);
 
@@ -60,6 +64,7 @@ public sealed class ImageService
             .ToList();
 
         var albums = Directory.EnumerateDirectories(abs)
+            .Where(d => !IsCachePath(d))     // 排除缩略图缓存目录，避免它被当作相册展示
             .Select(DescribeAlbum)
             .Where(a => a is not null)
             .Cast<AlbumInfo>()
@@ -130,18 +135,30 @@ public sealed class ImageService
         return (File.OpenRead(abs), ct);
     }
 
-    /// <summary>生成缩略图（最大边不超过 max，JPEG，内存缓存）。GIF 保留动画直接返回原文件。</summary>
+    /// <summary>取缩略图（最大边不超过 max，JPEG）：内存 → 加密磁盘缓存 → 生成（生成后加密落盘，明文不落盘）。
+    /// GIF 保留动画直接返回原文件。缓存键含源文件修改时间，图片被替换后自动重生成。</summary>
     public byte[]? GetThumbnail(string? path, int max)
     {
         var abs = ResolvePath(path);
         if (!File.Exists(abs) || ContentTypeFor(abs) is null) return null;
-        // GIF：缩略图也要动图——直接返回原文件（不压缩不缓存）
+        // GIF：缩略图也要动图——直接返回原文件（不压缩不落盘缓存）
         if (Path.GetExtension(abs).ToLowerInvariant() == ".gif")
             return File.ReadAllBytes(abs);
         max = Math.Clamp(max, 32, 512);
-        var key = $"{abs}|{max}";
-        if (_thumbCache.TryGetValue(key, out var cached)) return cached;
 
+        // 缓存键 = 源路径|尺寸|修改时间 的哈希（图片被替换 → 键变化 → 重生成）
+        var diskKey = ThumbCache.KeyFor(abs, max, File.GetLastWriteTimeUtc(abs));
+
+        if (_thumbCache.TryGetValue(diskKey, out var cached)) return cached;         // 1) 内存
+        var diskBytes = _thumbDisk.Read(diskKey);                                     // 2) 加密磁盘缓存
+        if (diskBytes is not null)
+        {
+            if (_thumbCache.Count >= ThumbCacheLimit) _thumbCache.Clear();
+            _thumbCache[diskKey] = diskBytes;
+            return diskBytes;
+        }
+
+        // 3) 生成 + 加密落盘 + 内存
         var bytes = File.ReadAllBytes(abs);
         using var image = Image.Load(bytes);
         image.Mutate(x => x.Resize(new ResizeOptions
@@ -152,8 +169,9 @@ public sealed class ImageService
         using var ms = new MemoryStream();
         image.SaveAsJpeg(ms, new JpegEncoder { Quality = 82 });
         var outBytes = ms.ToArray();
+        _thumbDisk.Write(diskKey, outBytes);
         if (_thumbCache.Count >= ThumbCacheLimit) _thumbCache.Clear();
-        _thumbCache[key] = outBytes;
+        _thumbCache[diskKey] = outBytes;
         return outBytes;
     }
 
@@ -177,6 +195,19 @@ public sealed class ImageService
     }
 
     // ---------- 路径解析 ----------
+
+    /// <summary>缩略图缓存目录绝对路径（供前端/校验使用）。</summary>
+    public string CacheDirectoryPath => _thumbDisk.DirectoryPath;
+
+    /// <summary>路径是否为缩略图缓存目录（或其内部子目录）——不允许作为相册浏览/添加。</summary>
+    public bool IsCachePath(string absPath)
+    {
+        var cache = _thumbDisk.DirectoryPath;
+        if (string.IsNullOrEmpty(cache)) return false;
+        return string.Equals(absPath, cache, StringComparison.OrdinalIgnoreCase)
+            || absPath.StartsWith(cache.TrimEnd('\\', '/') + Path.DirectorySeparatorChar,
+                StringComparison.OrdinalIgnoreCase);
+    }
 
     /// <summary>把请求里的 path 解析为绝对路径：空 → 默认目录；相对 → 相对默认目录；绝对 → 直接用。</summary>
     public string ResolvePath(string? path)
